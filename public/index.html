@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Business Orders</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #111827;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --radius: 14px;
+    }
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+    body {
+      margin: 0;
+      background: radial-gradient(circle at top, #1f2937, #0f172a 40%, #020617 90%);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      padding: 1.3rem;
+      color: #e2e8f0;
+    }
+    header { display: flex; justify-content: space-between; align-items: center; gap: .5rem; }
+    h1 { margin: 0; font-size: 1.5rem; }
+    .tabs { display: flex; gap: .5rem; }
+    .tab-btn {
+      background: rgba(15,23,42,0.15);
+      color: #e2e8f0;
+      border: 1px solid transparent;
+      border-radius: .6rem;
+      padding: .4rem .8rem .5rem;
+      font-size: .7rem;
+      cursor: pointer;
+    }
+    .tab-btn.active {
+      background: rgba(56,189,248,0.12);
+      border-color: rgba(56,189,248,0.55);
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 1.1rem;
+      height: calc(100vh - 4.2rem);
+    }
+    .card {
+      background: rgba(15, 23, 42, 0.65);
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      backdrop-filter: blur(16px);
+      border-radius: var(--radius);
+      padding: 1rem 1.1rem 1.1rem;
+      height: 100%;
+      overflow: auto;
+    }
+    label { font-size: .75rem; color: var(--muted); display: block; margin-bottom: .35rem; }
+    input, select {
+      width: 100%;
+      background: rgba(15,23,42,.35);
+      border: 1px solid rgba(148,163,184,0.28);
+      border-radius: .55rem;
+      padding: .5rem .65rem;
+      color: #e2e8f0;
+      font-size: .8rem;
+      outline: none;
+    }
+    input:focus, select:focus { border-color: rgba(56,189,248,.75); background: rgba(15,23,42,.65); }
+    .form-group { margin-bottom: .6rem; }
+    .two-col {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0,1fr));
+      gap: .5rem;
+    }
+    button {
+      border: none;
+      background: var(--accent);
+      color: #0f172a;
+      font-weight: 600;
+      padding: .55rem .85rem;
+      border-radius: .6rem;
+      font-size: .75rem;
+      cursor: pointer;
+    }
+    button.secondary { background: rgba(148,163,184,0.12); color: #e2e8f0; }
+    table { width: 100%; border-collapse: collapse; font-size: .7rem; }
+    thead {
+      background: rgba(15, 23, 42, 0.3);
+      position: sticky; top: 0;
+    }
+    th, td {
+      text-align: left;
+      padding: .4rem .3rem;
+      border-bottom: 1px solid rgba(148,163,184,0.08);
+      white-space: nowrap;
+    }
+    .orders-table { width: 100%; overflow: auto; height: 100%; }
+    .hidden { display: none !important; }
+    .stock-item {
+      background: rgba(15,23,42,0.25);
+      border: 1px solid rgba(148,163,184,0.12);
+      border-radius: .6rem;
+      padding: .45rem .5rem .3rem;
+      margin-bottom: .4rem;
+    }
+    .stock-item-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: .35rem;
+      gap: .4rem;
+    }
+    .size-row {
+      display: flex;
+      align-items: center;
+      gap: .4rem;
+      margin-bottom: .25rem;
+      font-size: .7rem;
+    }
+    .size-row span.label { width: 52px; }
+    .size-row input {
+      width: 60px;
+      text-align: center;
+    }
+    .size-row button {
+      width: 26px;
+      height: 26px;
+      padding: 0;
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+    }
+    .badge {
+      font-size: .6rem;
+      background: rgba(56,189,248,0.07);
+      border: 1px solid rgba(56,189,248,0.3);
+      padding: .2rem .4rem;
+      border-radius: 999px;
+    }
+    .add-cat-box {
+      background: rgba(15,23,42,0.3);
+      border: 1px solid rgba(148,163,184,0.15);
+      border-radius: .6rem;
+      padding: .45rem .5rem .55rem;
+      margin-bottom: .5rem;
+    }
+    .add-cat-box small {
+      display: block;
+      font-size: .6rem;
+      color: #94a3b8;
+      margin-bottom: .25rem;
+    }
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; height: auto; }
+      .card { height: auto; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Order Register</h1>
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="orders-tab">Orders</button>
+      <button class="tab-btn" data-tab="stocks-tab">Stocks</button>
+    </div>
+  </header>
+
+  <!-- ORDERS TAB -->
+  <div class="layout" id="orders-tab">
+    <div class="card">
+      <h3 style="margin-top:0;margin-bottom:.6rem;">New Order</h3>
+      <!-- Customer info -->
+      <div class="form-group">
+        <label for="customerName">Customer name</label>
+        <input id="customerName" type="text" />
+      </div>
+      <div class="two-col form-group">
+        <div>
+          <label for="phone">Phone number</label>
+          <input id="phone" type="tel" />
+        </div>
+        <div>
+          <label for="address">Address</label>
+          <input id="address" type="text"  />
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="payment">Payment method</label>
+        <select id="payment">
+          <option value="cash">Cash</option>
+          <option value="bank">Bank transfer</option>
+        </select>
+      </div>
+
+      <hr style="border:0;border-top:1px solid rgba(148,163,184,0.12);margin:.7rem 0;" />
+
+      <!-- Product info -->
+      <div class="form-group">
+        <label for="productCategory">Product category</label>
+        <select id="productCategory"></select>
+      </div>
+      <div class="form-group">
+        <label for="stockItemSelect">Stock item</label>
+        <select id="stockItemSelect"></select>
+      </div>
+      <div class="two-col form-group">
+        <div>
+          <label for="size">Size</label>
+          <select id="size"></select>
+        </div>
+        <div>
+          <label for="qty">Quantity</label>
+          <input id="qty" type="number" min="1" value="1" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="notes">Notes</label>
+        <input id="notes" type="text" />
+      </div>
+      <button id="addOrderBtn" style="width:100%;margin-top:.5rem;">Add order</button>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem;">
+        <h3 style="margin:0;">Orders</h3>
+        <button id="exportBtn" class="secondary">Export JSON</button>
+      </div>
+      <div class="orders-table">
+        <table id="ordersTable">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Customer</th>
+              <th>Phone</th>
+              <th>Category</th>
+              <th>Item</th>
+              <th>Size</th>
+              <th>Qty</th>
+              <th>Pay</th>
+              <th>Address</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- rows -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- STOCKS TAB -->
+  <div class="layout hidden" id="stocks-tab">
+    <div class="card">
+      <h3 style="margin-top:0;margin-bottom:.6rem;">Add stock item</h3>
+      <div class="add-cat-box">
+        <small>Add new category</small>
+        <div class="two-col" style="gap:.35rem;">
+          <input id="newCategoryName" type="text"  />
+          <button id="addCategoryBtn">Add</button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="stockCategory">Category</label>
+        <select id="stockCategory"></select>
+      </div>
+      <div class="form-group">
+        <label for="stockName">Item name</label>
+        <input id="stockName" type="text"  />
+      </div>
+      <p style="font-size:.7rem;color:var(--muted);margin-bottom:.4rem;">Set sizes (click + / -):</p>
+      <div id="stockSizesArea"></div>
+      <button id="saveStockItem" style="width:100%;margin-top:.5rem;">Save item</button>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0;margin-bottom:.6rem;">Current stock</h3>
+      <div id="stockList"></div>
+    </div>
+  </div>
+
+  <script>
+const API_BASE = "";
+    // base categories
+    let categories = [
+      { id: "hoodie", name: "Hoodie", sizes: ["M","L","XL","2XL"] },
+      { id: "pants", name: "Pants", sizes: ["M","L","XL","2XL"] },
+      { id: "jeans", name: "Jeans", sizes: ["30","32","34","36","38"] }
+    ];
+
+    // stock items = array
+    let stockItems = [];
+    let orders = [];
+
+    // elements
+    const tabBtns = document.querySelectorAll(".tab-btn");
+    const ordersTab = document.getElementById("orders-tab");
+    const stocksTab = document.getElementById("stocks-tab");
+
+    const productCategoryEl = document.getElementById("productCategory");
+    const stockItemSelectEl = document.getElementById("stockItemSelect");
+    const sizeEl = document.getElementById("size");
+    const qtyEl = document.getElementById("qty");
+    const addOrderBtn = document.getElementById("addOrderBtn");
+    const ordersTableBody = document.querySelector("#ordersTable tbody");
+    const exportBtn = document.getElementById("exportBtn");
+
+    const stockCategoryEl = document.getElementById("stockCategory");
+    const stockNameEl = document.getElementById("stockName");
+    const stockSizesArea = document.getElementById("stockSizesArea");
+    const saveStockItemBtn = document.getElementById("saveStockItem");
+    const stockList = document.getElementById("stockList");
+
+    const newCategoryNameEl = document.getElementById("newCategoryName");
+    const addCategoryBtn = document.getElementById("addCategoryBtn");
+
+    function uuid() {
+      return "id-" + Math.random().toString(36).slice(2,9);
+    }
+
+    function renderCategorySelects() {
+      // orders form
+      productCategoryEl.innerHTML = "";
+      categories.forEach(cat => {
+        const opt = document.createElement("option");
+        opt.value = cat.id;
+        opt.textContent = cat.name;
+        productCategoryEl.appendChild(opt);
+      });
+      // stock form
+      stockCategoryEl.innerHTML = "";
+      categories.forEach(cat => {
+        const opt = document.createElement("option");
+        opt.value = cat.id;
+        opt.textContent = cat.name;
+        stockCategoryEl.appendChild(opt);
+      });
+    }
+
+    function renderStockSizeControls(categoryId) {
+      stockSizesArea.innerHTML = "";
+      const cat = categories.find(c => c.id === categoryId);
+      const sizes = cat && cat.sizes && cat.sizes.length ? cat.sizes : ["S","M","L"]; // fallback
+      sizes.forEach(size => {
+        const row = document.createElement("div");
+        row.className = "size-row";
+        row.dataset.size = size;
+        row.innerHTML = `
+          <span class="label">${size}</span>
+          <button type="button" class="minus">-</button>
+          <input type="number" value="0" min="0" />
+          <button type="button" class="plus">+</button>
+        `;
+        stockSizesArea.appendChild(row);
+      });
+      stockSizesArea.querySelectorAll(".plus").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const input = btn.parentElement.querySelector("input");
+          input.value = Number(input.value) + 1;
+        });
+      });
+      stockSizesArea.querySelectorAll(".minus").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const input = btn.parentElement.querySelector("input");
+          input.value = Math.max(0, Number(input.value) - 1);
+        });
+      });
+    }
+
+    function getStockFormSizes() {
+      const sizes = {};
+      stockSizesArea.querySelectorAll(".size-row").forEach(row => {
+        const size = row.dataset.size;
+        const val = Number(row.querySelector("input").value || "0");
+        sizes[size] = val;
+      });
+      return sizes;
+    }
+
+    function renderStockList() {
+      stockList.innerHTML = "";
+      stockItems.forEach(item => {
+        const div = document.createElement("div");
+        div.className = "stock-item";
+        const sizesHtml = Object.entries(item.sizes)
+          .map(([s, q]) => `<div class="size-row"><span class="label">${s}</span><span class="badge">${q}</span></div>`)
+          .join("");
+        const cat = categories.find(c => c.id === item.category);
+        div.innerHTML = `
+          <div class="stock-item-header">
+            <div>
+              <strong>${item.name}</strong>
+              <div style="font-size:.65rem;color:#94a3b8;">${cat ? cat.name : item.category}</div>
+            </div>
+          </div>
+          ${sizesHtml}
+        `;
+        stockList.appendChild(div);
+      });
+    }
+
+    function fillOrderStockItems(categoryId) {
+      stockItemSelectEl.innerHTML = "";
+      const items = stockItems.filter(i => i.category === categoryId);
+      if (items.length === 0) {
+        const opt = document.createElement("option");
+        opt.value = "";
+        opt.textContent = "No items in this category";
+        stockItemSelectEl.appendChild(opt);
+        sizeEl.innerHTML = "";
+        return;
+      }
+      items.forEach(item => {
+        const opt = document.createElement("option");
+        opt.value = item.id;
+        opt.textContent = item.name;
+        stockItemSelectEl.appendChild(opt);
+      });
+      fillOrderSizesFromItem(items[0]);
+    }
+
+    function fillOrderSizesFromItem(item) {
+      sizeEl.innerHTML = "";
+      Object.keys(item.sizes).forEach(sz => {
+        const opt = document.createElement("option");
+        opt.value = sz;
+        opt.textContent = `${sz} (${item.sizes[sz]})`;
+        sizeEl.appendChild(opt);
+      });
+    }
+
+    function renderOrders() {
+      ordersTableBody.innerHTML = "";
+      orders.forEach((o, i) => {
+        const cat = categories.find(c => c.id === o.category);
+        const catName = cat ? cat.name : o.category;
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${i+1}</td>
+          <td>${o.customerName}</td>
+          <td>${o.phone}</td>
+          <td>${catName}</td>
+          <td>${o.itemName}</td>
+          <td>${o.size}</td>
+          <td>${o.qty}</td>
+          <td>${o.payment}</td>
+          <td>${o.address}</td>
+          <td>${o.notes || ""}</td>
+        `;
+        ordersTableBody.appendChild(tr);
+      });
+    }
+
+    function decreaseStock(itemId, size, qty) {
+      const item = stockItems.find(i => i.id === itemId);
+      if (!item) return;
+      if (typeof item.sizes[size] === "undefined") return;
+      item.sizes[size] = Math.max(0, item.sizes[size] - qty);
+      renderStockList();
+      if (stockItemSelectEl.value === itemId) {
+        fillOrderSizesFromItem(item);
+      }
+    }
+
+    // tabs
+    tabBtns.forEach(btn => {
+      btn.addEventListener("click", () => {
+        tabBtns.forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        const tab = btn.dataset.tab;
+        if (tab === "orders-tab") {
+          ordersTab.classList.remove("hidden");
+          stocksTab.classList.add("hidden");
+        } else {
+          ordersTab.classList.add("hidden");
+          stocksTab.classList.remove("hidden");
+        }
+      });
+    });
+
+    // add category
+    addCategoryBtn.addEventListener("click", () => {
+      const name = newCategoryNameEl.value.trim();
+      if (!name) return;
+      const id = name.toLowerCase().replace(/\s+/g, "-");
+      // avoid duplicates
+      if (categories.some(c => c.id === id)) {
+        alert("Category already exists.");
+        return;
+      }
+      categories.push({ id, name, sizes: [] }); // empty sizes, user will set per item
+      renderCategorySelects();
+      renderStockSizeControls(id);
+      newCategoryNameEl.value = "";
+    });
+
+    stockCategoryEl.addEventListener("change", () => {
+      renderStockSizeControls(stockCategoryEl.value);
+    });
+
+    saveStockItemBtn.addEventListener("click", () => {
+      const categoryId = stockCategoryEl.value;
+      const name = stockNameEl.value.trim();
+      if (!name) {
+        alert("Write item name");
+        return;
+      }
+      const sizes = getStockFormSizes();
+      const item = {
+        id: uuid(),
+        category: categoryId,
+        name,
+        sizes
+      };
+      stockItems.push(item);
+      renderStockList();
+      stockNameEl.value = "";
+      renderStockSizeControls(stockCategoryEl.value);
+      // refresh order form if same category
+      if (productCategoryEl.value === categoryId) {
+        fillOrderStockItems(categoryId);
+      }
+    });
+
+    productCategoryEl.addEventListener("change", () => {
+      fillOrderStockItems(productCategoryEl.value);
+    });
+
+    stockItemSelectEl.addEventListener("change", () => {
+      const id = stockItemSelectEl.value;
+      const item = stockItems.find(i => i.id === id);
+      if (item) fillOrderSizesFromItem(item);
+    });
+
+    addOrderBtn.addEventListener("click", async () => {
+  const customerName = document.getElementById("customerName").value.trim();
+  const phone = document.getElementById("phone").value.trim();
+  const address = document.getElementById("address").value.trim();
+  const payment = document.getElementById("payment").value;
+  const categoryId = productCategoryEl.value;
+  const stockItemId = stockItemSelectEl.value;
+  const size = sizeEl.value;
+  const qty = Number(qtyEl.value || "1");
+  const notes = document.getElementById("notes").value.trim();
+
+  if (!customerName || !phone) {
+    alert("Customer name and phone are required.");
+    return;
+  }
+
+  const item = stockItems.find(i => i.id === stockItemId);
+  if (!item) {
+    alert("No stock item selected.");
+    return;
+  }
+
+  const body = {
+    customerName,
+    phone,
+    address,
+    payment,
+    category: categoryId,
+    itemId: stockItemId,
+    itemName: item.name,
+    size,
+    qty,
+    notes
+  };
+
+  // 1) send to backend
+  try {
+    const res = await fetch(`${API_BASE}/api/orders`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+      console.log("Backend error", res.status);
+    }
+  } catch (err) {
+    console.log("Could not reach backend", err);
+  }
+
+  // 2) update UI locally
+  orders.push({ ...body, createdAt: new Date().toISOString() });
+  decreaseStock(stockItemId, size, qty);
+  renderOrders();
+  qtyEl.value = 1;
+  document.getElementById("notes").value = "";
+});
+
+
+    exportBtn.addEventListener("click", () => {
+      const dataStr = JSON.stringify(orders, null, 2);
+      const win = window.open();
+      win.document.write("<pre>" + dataStr + "</pre>");
+      win.document.close();
+    });
+
+    // INIT
+    renderCategorySelects();
+    renderStockSizeControls(categories[0].id);
+    fillOrderStockItems(categories[0].id);
+  </script>
+</body>
+</html>

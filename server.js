@@ -1,4 +1,3 @@
-// server.js
 import express from "express";
 import cors from "cors";
 import fs from "fs";
@@ -9,13 +8,17 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+
+// 1) serve static files from /public
+app.use(express.static(path.join(__dirname, "public")));
+
 app.use(cors());
 app.use(express.json());
 
-// file to store orders
+// 2) file to store orders
 const ORDERS_FILE = path.join(__dirname, "orders.json");
 
-// read orders from file
+// helpers
 function readOrders() {
   if (!fs.existsSync(ORDERS_FILE)) {
     fs.writeFileSync(ORDERS_FILE, "[]", "utf8");
@@ -24,17 +27,20 @@ function readOrders() {
   return JSON.parse(data);
 }
 
-// write orders to file
 function writeOrders(orders) {
   fs.writeFileSync(ORDERS_FILE, JSON.stringify(orders, null, 2), "utf8");
 }
 
-// test
-app.get("/", (req, res) => {
-  res.json({ ok: true, message: "Orders API is running" });
+// IMPORTANT ⚠️
+// remove the old "app.get('/')" that was sending JSON
+// because now "/" should show index.html
+// If you still want a health check, make it on /health
+
+app.get("/health", (req, res) => {
+  res.json({ ok: true });
 });
 
-// save order
+// API: create order
 app.post("/api/orders", (req, res) => {
   const {
     customerName,
@@ -74,7 +80,7 @@ app.post("/api/orders", (req, res) => {
   res.json({ ok: true, order: newOrder });
 });
 
-// list orders
+// API: list orders
 app.get("/api/orders", (req, res) => {
   const orders = readOrders();
   res.json(orders);
