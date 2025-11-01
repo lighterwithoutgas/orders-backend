@@ -103,32 +103,12 @@
       padding: .45rem .5rem .3rem;
       margin-bottom: .4rem;
     }
-    .stock-item-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: .35rem;
-      gap: .4rem;
-    }
     .size-row {
       display: flex;
       align-items: center;
       gap: .4rem;
       margin-bottom: .25rem;
       font-size: .7rem;
-    }
-    .size-row span.label { width: 52px; }
-    .size-row input {
-      width: 60px;
-      text-align: center;
-    }
-    .size-row button {
-      width: 26px;
-      height: 26px;
-      padding: 0;
-      display: grid;
-      place-items: center;
-      font-weight: 700;
     }
     .badge {
       font-size: .6rem;
@@ -137,6 +117,31 @@
       padding: .2rem .4rem;
       border-radius: 999px;
     }
+    .actions-btn {
+      background: rgba(148,163,184,0.08);
+      color: #e2e8f0;
+      border: 1px solid rgba(148,163,184,0.12);
+      padding: .25rem .5rem;
+      border-radius: .4rem;
+      font-size: .65rem;
+      margin-right: .25rem;
+      cursor: pointer;
+    }
+    .edit-panel {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: 280px;
+      height: 100vh;
+      background: rgba(15,23,42,0.97);
+      border-left: 1px solid rgba(148,163,184,.15);
+      padding: .9rem;
+      display: none;
+      flex-direction: column;
+      gap: .5rem;
+      z-index: 99;
+    }
+    .edit-panel.show { display: flex; }
     .add-cat-box {
       background: rgba(15,23,42,0.3);
       border: 1px solid rgba(148,163,184,0.15);
@@ -153,6 +158,7 @@
     @media (max-width: 900px) {
       .layout { grid-template-columns: 1fr; height: auto; }
       .card { height: auto; }
+      .edit-panel { width: 100%; }
     }
   </style>
 </head>
@@ -165,11 +171,31 @@
     </div>
   </header>
 
+  <!-- edit order panel -->
+  <div id="editPanel" class="edit-panel">
+    <h3>Edit order</h3>
+    <label>Price</label>
+    <input type="number" id="editPrice" min="0" value="0" />
+    <label>Status</label>
+    <select id="editStatus">
+      <option value="pending">Pending</option>
+      <option value="delivered">Delivered</option>
+      <option value="canceled">Canceled</option>
+    </select>
+    <label>Quantity</label>
+    <input type="number" id="editQty" min="1" value="1" />
+    <label>Notes</label>
+    <input type="text" id="editNotes" />
+    <div style="display:flex;gap:.5rem;margin-top:.5rem;">
+      <button id="saveEditBtn">Save</button>
+      <button id="closeEditBtn" class="secondary" type="button">Close</button>
+    </div>
+  </div>
+
   <!-- ORDERS TAB -->
   <div class="layout" id="orders-tab">
     <div class="card">
       <h3 style="margin-top:0;margin-bottom:.6rem;">New Order</h3>
-      <!-- Customer info -->
       <div class="form-group">
         <label for="customerName">Customer name</label>
         <input id="customerName" type="text" />
@@ -191,10 +217,23 @@
           <option value="bank">Bank transfer</option>
         </select>
       </div>
+      <div class="two-col form-group">
+        <div>
+          <label for="price">Price (shekel)</label>
+          <input id="price" type="number" min="0" value="0" />
+        </div>
+        <div>
+          <label for="status">Status</label>
+          <select id="status">
+            <option value="pending">Pending</option>
+            <option value="delivered">Delivered</option>
+            <option value="canceled">Canceled</option>
+          </select>
+        </div>
+      </div>
 
       <hr style="border:0;border-top:1px solid rgba(148,163,184,0.12);margin:.7rem 0;" />
 
-      <!-- Product info -->
       <div class="form-group">
         <label for="productCategory">Product category</label>
         <select id="productCategory"></select>
@@ -221,6 +260,11 @@
     </div>
 
     <div class="card">
+      <div style="display:flex;gap:.5rem;margin-bottom:.6rem;">
+        <div id="totalAll" class="badge">Total: 0</div>
+        <div id="totalDelivered" class="badge">Delivered: 0</div>
+        <div id="totalPending" class="badge">Pending: 0</div>
+      </div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem;">
         <h3 style="margin:0;">Orders</h3>
         <button id="exportBtn" class="secondary">Export JSON</button>
@@ -236,14 +280,13 @@
               <th>Item</th>
               <th>Size</th>
               <th>Qty</th>
-              <th>Pay</th>
+              <th>Price</th>
+              <th>Status</th>
               <th>Address</th>
-              <th>Notes</th>
+              <th>Actions</th>
             </tr>
           </thead>
-          <tbody>
-            <!-- rows -->
-          </tbody>
+          <tbody></tbody>
         </table>
       </div>
     </div>
@@ -252,7 +295,8 @@
   <!-- STOCKS TAB -->
   <div class="layout hidden" id="stocks-tab">
     <div class="card">
-      <h3 style="margin-top:0;margin-bottom:.6rem;">Add stock item</h3>
+      <h3 style="margin-top:0;margin-bottom:.6rem;">Add / Edit stock item</h3>
+
       <div class="add-cat-box">
         <small>Add new category</small>
         <div class="two-col" style="gap:.35rem;">
@@ -260,15 +304,16 @@
           <button id="addCategoryBtn">Add</button>
         </div>
       </div>
+
       <div class="form-group">
-        <label for="stockCategory">Category</label>
-        <select id="stockCategory"></select>
+        <label for="newCategory">Category</label>
+        <select id="newCategory"></select>
       </div>
       <div class="form-group">
         <label for="stockName">Item name</label>
         <input id="stockName" type="text"  />
       </div>
-      <p style="font-size:.7rem;color:var(--muted);margin-bottom:.4rem;">Set sizes (click + / -):</p>
+      <p style="font-size:.7rem;color:var(--muted);margin-bottom:.4rem;">Sizes for this item:</p>
       <div id="stockSizesArea"></div>
       <button id="saveStockItem" style="width:100%;margin-top:.5rem;">Save item</button>
     </div>
@@ -280,17 +325,16 @@
   </div>
 
   <script>
-const API_BASE = "";
-    // base categories
+    // base categories (front)
     let categories = [
       { id: "hoodie", name: "Hoodie", sizes: ["M","L","XL","2XL"] },
       { id: "pants", name: "Pants", sizes: ["M","L","XL","2XL"] },
       { id: "jeans", name: "Jeans", sizes: ["30","32","34","36","38"] }
     ];
 
-    // stock items = array
     let stockItems = [];
     let orders = [];
+    let editingOrderId = null;
 
     // elements
     const tabBtns = document.querySelectorAll(".tab-btn");
@@ -305,21 +349,30 @@ const API_BASE = "";
     const ordersTableBody = document.querySelector("#ordersTable tbody");
     const exportBtn = document.getElementById("exportBtn");
 
-    const stockCategoryEl = document.getElementById("stockCategory");
+    const newCategoryEl = document.getElementById("newCategory");
+    const newCategoryNameEl = document.getElementById("newCategoryName");
+    const addCategoryBtn = document.getElementById("addCategoryBtn");
+
     const stockNameEl = document.getElementById("stockName");
     const stockSizesArea = document.getElementById("stockSizesArea");
     const saveStockItemBtn = document.getElementById("saveStockItem");
     const stockList = document.getElementById("stockList");
 
-    const newCategoryNameEl = document.getElementById("newCategoryName");
-    const addCategoryBtn = document.getElementById("addCategoryBtn");
+    const totalAllEl = document.getElementById("totalAll");
+    const totalDeliveredEl = document.getElementById("totalDelivered");
+    const totalPendingEl = document.getElementById("totalPending");
 
-    function uuid() {
-      return "id-" + Math.random().toString(36).slice(2,9);
-    }
+    const editPanel = document.getElementById("editPanel");
+    const editPrice = document.getElementById("editPrice");
+    const editStatus = document.getElementById("editStatus");
+    const editQty = document.getElementById("editQty");
+    const editNotes = document.getElementById("editNotes");
+    const saveEditBtn = document.getElementById("saveEditBtn");
+    const closeEditBtn = document.getElementById("closeEditBtn");
 
+    // --------- helpers ----------
     function renderCategorySelects() {
-      // orders form
+      // orders
       productCategoryEl.innerHTML = "";
       categories.forEach(cat => {
         const opt = document.createElement("option");
@@ -327,54 +380,30 @@ const API_BASE = "";
         opt.textContent = cat.name;
         productCategoryEl.appendChild(opt);
       });
-      // stock form
-      stockCategoryEl.innerHTML = "";
+
+      // stocks
+      newCategoryEl.innerHTML = "";
       categories.forEach(cat => {
         const opt = document.createElement("option");
         opt.value = cat.id;
         opt.textContent = cat.name;
-        stockCategoryEl.appendChild(opt);
+        newCategoryEl.appendChild(opt);
       });
     }
 
-    function renderStockSizeControls(categoryId) {
+    function renderStockSizesAreaFor(categoryId) {
       stockSizesArea.innerHTML = "";
       const cat = categories.find(c => c.id === categoryId);
-      const sizes = cat && cat.sizes && cat.sizes.length ? cat.sizes : ["S","M","L"]; // fallback
-      sizes.forEach(size => {
+      const sizes = (cat && cat.sizes && cat.sizes.length) ? cat.sizes : ["S","M","L"];
+      sizes.forEach(sz => {
         const row = document.createElement("div");
         row.className = "size-row";
-        row.dataset.size = size;
         row.innerHTML = `
-          <span class="label">${size}</span>
-          <button type="button" class="minus">-</button>
-          <input type="number" value="0" min="0" />
-          <button type="button" class="plus">+</button>
+          <span style="width:50px;display:inline-block;">${sz}</span>
+          <input type="number" data-size="${sz}" value="0" min="0" style="width:70px;" />
         `;
         stockSizesArea.appendChild(row);
       });
-      stockSizesArea.querySelectorAll(".plus").forEach(btn => {
-        btn.addEventListener("click", () => {
-          const input = btn.parentElement.querySelector("input");
-          input.value = Number(input.value) + 1;
-        });
-      });
-      stockSizesArea.querySelectorAll(".minus").forEach(btn => {
-        btn.addEventListener("click", () => {
-          const input = btn.parentElement.querySelector("input");
-          input.value = Math.max(0, Number(input.value) - 1);
-        });
-      });
-    }
-
-    function getStockFormSizes() {
-      const sizes = {};
-      stockSizesArea.querySelectorAll(".size-row").forEach(row => {
-        const size = row.dataset.size;
-        const val = Number(row.querySelector("input").value || "0");
-        sizes[size] = val;
-      });
-      return sizes;
     }
 
     function renderStockList() {
@@ -382,20 +411,52 @@ const API_BASE = "";
       stockItems.forEach(item => {
         const div = document.createElement("div");
         div.className = "stock-item";
-        const sizesHtml = Object.entries(item.sizes)
-          .map(([s, q]) => `<div class="size-row"><span class="label">${s}</span><span class="badge">${q}</span></div>`)
-          .join("");
         const cat = categories.find(c => c.id === item.category);
+        const sizesHtml = Object.entries(item.sizes || {})
+          .map(([s,q]) => `<div class="size-row"><span>${s}</span><span class="badge">${q}</span></div>`)
+          .join("");
         div.innerHTML = `
-          <div class="stock-item-header">
+          <div style="margin-bottom:.35rem;display:flex;justify-content:space-between;gap:.5rem;align-items:center;">
             <div>
               <strong>${item.name}</strong>
               <div style="font-size:.65rem;color:#94a3b8;">${cat ? cat.name : item.category}</div>
+            </div>
+            <div>
+              <button class="actions-btn" data-stock-edit="${item.id}">Edit</button>
+              <button class="actions-btn" data-stock-del="${item.id}">Del</button>
             </div>
           </div>
           ${sizesHtml}
         `;
         stockList.appendChild(div);
+
+        // EDIT STOCK
+        div.querySelector("[data-stock-edit]").onclick = () => {
+          const id = item.id;
+          const stk = stockItems.find(s => s.id === id);
+          if (!stk) return;
+          newCategoryEl.value = stk.category;
+          stockNameEl.value = stk.name;
+          // render sizes for this category then fill
+          renderStockSizesAreaFor(stk.category);
+          stockSizesArea.querySelectorAll("input[data-size]").forEach(inp => {
+            const sz = inp.dataset.size;
+            inp.value = stk.sizes && typeof stk.sizes[sz] !== "undefined" ? stk.sizes[sz] : 0;
+          });
+          // remember editing id
+          stockNameEl.dataset.editingId = id;
+        };
+
+        // DELETE STOCK
+        div.querySelector("[data-stock-del]").onclick = async () => {
+          if (!confirm("Delete this stock item?")) return;
+          try {
+            await fetch(`/api/stocks/${item.id}`, { method: "DELETE" });
+          } catch(e) {}
+          stockItems = stockItems.filter(s => s.id !== item.id);
+          renderStockList();
+          fillOrderStockItems(productCategoryEl.value);
+        };
       });
     }
 
@@ -404,8 +465,8 @@ const API_BASE = "";
       const items = stockItems.filter(i => i.category === categoryId);
       if (items.length === 0) {
         const opt = document.createElement("option");
+        opt.textContent = "No items";
         opt.value = "";
-        opt.textContent = "No items in this category";
         stockItemSelectEl.appendChild(opt);
         sizeEl.innerHTML = "";
         return;
@@ -421,54 +482,91 @@ const API_BASE = "";
 
     function fillOrderSizesFromItem(item) {
       sizeEl.innerHTML = "";
-      Object.keys(item.sizes).forEach(sz => {
+      Object.entries(item.sizes || {}).forEach(([sz, qty]) => {
         const opt = document.createElement("option");
         opt.value = sz;
-        opt.textContent = `${sz} (${item.sizes[sz]})`;
+        opt.textContent = qty <= 0 ? `${sz} (OUT)` : `${sz} (${qty})`;
+        if (qty <= 0) opt.disabled = true;
         sizeEl.appendChild(opt);
       });
+    }
+
+    function updateTotals() {
+      let total = 0;
+      let delivered = 0;
+      let pending = 0;
+      orders.forEach(o => {
+        const p = Number(o.price || 0);
+        total += p;
+        if ((o.status || "pending") === "delivered") delivered += p;
+        if ((o.status || "pending") === "pending") pending++;
+      });
+      totalAllEl.textContent = "Total: " + total;
+      totalDeliveredEl.textContent = "Delivered: " + delivered;
+      totalPendingEl.textContent = "Pending: " + pending;
     }
 
     function renderOrders() {
       ordersTableBody.innerHTML = "";
       orders.forEach((o, i) => {
         const cat = categories.find(c => c.id === o.category);
-        const catName = cat ? cat.name : o.category;
         const tr = document.createElement("tr");
         tr.innerHTML = `
           <td>${i+1}</td>
           <td>${o.customerName}</td>
           <td>${o.phone}</td>
-          <td>${catName}</td>
+          <td>${cat ? cat.name : o.category}</td>
           <td>${o.itemName}</td>
           <td>${o.size}</td>
           <td>${o.qty}</td>
-          <td>${o.payment}</td>
-          <td>${o.address}</td>
-          <td>${o.notes || ""}</td>
+          <td>${o.price || 0}</td>
+          <td>${o.status || "pending"}</td>
+          <td>${o.address || ""}</td>
+          <td>
+            <button class="actions-btn" data-edit="${o.id}">Edit</button>
+            <button class="actions-btn" data-del="${o.id}">Del</button>
+          </td>
         `;
         ordersTableBody.appendChild(tr);
       });
+
+      // delete order
+      document.querySelectorAll("[data-del]").forEach(btn => {
+        btn.onclick = async () => {
+          const id = btn.dataset.del;
+          if (!confirm("Delete order?")) return;
+          try {
+            await fetch(`/api/orders/${id}`, { method: "DELETE" });
+          } catch(e) {}
+          orders = orders.filter(o => String(o.id) !== String(id));
+          renderOrders();
+          updateTotals();
+          loadStocks(); // to refresh returned stock
+        };
+      });
+
+      // edit order
+      document.querySelectorAll("[data-edit]").forEach(btn => {
+        btn.onclick = () => {
+          const id = btn.dataset.edit;
+          const ord = orders.find(o => String(o.id) === String(id));
+          if (!ord) return;
+          editingOrderId = id;
+          editPrice.value = ord.price || 0;
+          editStatus.value = ord.status || "pending";
+          editQty.value = ord.qty || 1;
+          editNotes.value = ord.notes || "";
+          editPanel.classList.add("show");
+        };
+      });
     }
 
-    function decreaseStock(itemId, size, qty) {
-      const item = stockItems.find(i => i.id === itemId);
-      if (!item) return;
-      if (typeof item.sizes[size] === "undefined") return;
-      item.sizes[size] = Math.max(0, item.sizes[size] - qty);
-      renderStockList();
-      if (stockItemSelectEl.value === itemId) {
-        fillOrderSizesFromItem(item);
-      }
-    }
-
-    // tabs
+    // ---- tabs ----
     tabBtns.forEach(btn => {
       btn.addEventListener("click", () => {
         tabBtns.forEach(b => b.classList.remove("active"));
         btn.classList.add("active");
-        const tab = btn.dataset.tab;
-        if (tab === "orders-tab") {
+        if (btn.dataset.tab === "orders-tab") {
           ordersTab.classList.remove("hidden");
           stocksTab.classList.add("hidden");
         } else {
@@ -478,129 +576,240 @@ const API_BASE = "";
       });
     });
 
-    // add category
+    // add category (front only)
     addCategoryBtn.addEventListener("click", () => {
       const name = newCategoryNameEl.value.trim();
       if (!name) return;
       const id = name.toLowerCase().replace(/\s+/g, "-");
-      // avoid duplicates
       if (categories.some(c => c.id === id)) {
-        alert("Category already exists.");
+        alert("Category already exists");
         return;
       }
-      categories.push({ id, name, sizes: [] }); // empty sizes, user will set per item
+      categories.push({ id, name, sizes: [] });
       renderCategorySelects();
-      renderStockSizeControls(id);
+      renderStockSizesAreaFor(id);
       newCategoryNameEl.value = "";
     });
 
-    stockCategoryEl.addEventListener("change", () => {
-      renderStockSizeControls(stockCategoryEl.value);
-    });
-
-    saveStockItemBtn.addEventListener("click", () => {
-      const categoryId = stockCategoryEl.value;
+    // save / create / update stock
+    saveStockItemBtn.onclick = async () => {
+      const category = newCategoryEl.value;
       const name = stockNameEl.value.trim();
       if (!name) {
-        alert("Write item name");
+        alert("name?");
         return;
       }
-      const sizes = getStockFormSizes();
-      const item = {
-        id: uuid(),
-        category: categoryId,
-        name,
-        sizes
-      };
-      stockItems.push(item);
-      renderStockList();
-      stockNameEl.value = "";
-      renderStockSizeControls(stockCategoryEl.value);
-      // refresh order form if same category
-      if (productCategoryEl.value === categoryId) {
-        fillOrderStockItems(categoryId);
-      }
-    });
+      const sizes = {};
+      stockSizesArea.querySelectorAll("input[data-size]").forEach(inp => {
+        sizes[inp.dataset.size] = Number(inp.value || 0);
+      });
 
+      const editingId = stockNameEl.dataset.editingId;
+
+      try {
+        if (editingId) {
+          // UPDATE
+          const res = await fetch(`/api/stocks/${editingId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ category, name, sizes })
+          });
+          const data = await res.json();
+          if (data && data.stock) {
+            const idx = stockItems.findIndex(s => s.id === editingId);
+            if (idx !== -1) stockItems[idx] = data.stock;
+          }
+          stockNameEl.dataset.editingId = "";
+        } else {
+          // CREATE
+          const res = await fetch("/api/stocks", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ category, name, sizes })
+          });
+          const data = await res.json();
+          if (data && data.stock) {
+            stockItems.push(data.stock);
+          }
+        }
+      } catch(e) {
+        console.log(e);
+      }
+
+      renderStockList();
+      if (productCategoryEl.value === category) {
+        fillOrderStockItems(category);
+      }
+      stockNameEl.value = "";
+      renderStockSizesAreaFor(category);
+    };
+
+    // change order category
     productCategoryEl.addEventListener("change", () => {
       fillOrderStockItems(productCategoryEl.value);
     });
 
+    // change order item
     stockItemSelectEl.addEventListener("change", () => {
-      const id = stockItemSelectEl.value;
-      const item = stockItems.find(i => i.id === id);
+      const item = stockItems.find(i => i.id === stockItemSelectEl.value);
       if (item) fillOrderSizesFromItem(item);
     });
 
-    addOrderBtn.addEventListener("click", async () => {
-  const customerName = document.getElementById("customerName").value.trim();
-  const phone = document.getElementById("phone").value.trim();
-  const address = document.getElementById("address").value.trim();
-  const payment = document.getElementById("payment").value;
-  const categoryId = productCategoryEl.value;
-  const stockItemId = stockItemSelectEl.value;
-  const size = sizeEl.value;
-  const qty = Number(qtyEl.value || "1");
-  const notes = document.getElementById("notes").value.trim();
+    // add order
+    addOrderBtn.onclick = async () => {
+      const customerName = document.getElementById("customerName").value.trim();
+      const phone = document.getElementById("phone").value.trim();
+      const address = document.getElementById("address").value.trim();
+      const payment = document.getElementById("payment").value;
+      const price = Number(document.getElementById("price").value || "0");
+      const status = document.getElementById("status").value;
+      const category = productCategoryEl.value;
+      const itemId = stockItemSelectEl.value;
+      const size = sizeEl.value;
+      const qty = Number(qtyEl.value || "1");
+      const notes = document.getElementById("notes").value.trim();
 
-  if (!customerName || !phone) {
-    alert("Customer name and phone are required.");
-    return;
-  }
+      if (!customerName || !phone) {
+        alert("name + phone");
+        return;
+      }
+      if (!itemId) {
+        alert("choose stock item");
+        return;
+      }
 
-  const item = stockItems.find(i => i.id === stockItemId);
-  if (!item) {
-    alert("No stock item selected.");
-    return;
-  }
+      // local check
+      const it = stockItems.find(i => i.id === itemId);
+      const currentQty = it ? Number(it.sizes?.[size] || 0) : 0;
+      if (currentQty < qty) {
+        alert("Not enough stock");
+        return;
+      }
 
-  const body = {
-    customerName,
-    phone,
-    address,
-    payment,
-    category: categoryId,
-    itemId: stockItemId,
-    itemName: item.name,
-    size,
-    qty,
-    notes
-  };
+      const body = {
+        customerName,
+        phone,
+        address,
+        payment,
+        price,
+        status,
+        category,
+        itemId,
+        itemName: it ? it.name : "",
+        size,
+        qty,
+        notes
+      };
 
-  // 1) send to backend
-  try {
-    const res = await fetch(`${API_BASE}/api/orders`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body)
-    });
-    if (!res.ok) {
-      console.log("Backend error", res.status);
+      try {
+        const res = await fetch("/api/orders", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          alert(data.error || "error");
+          return;
+        }
+        orders.unshift(data.order);
+        renderOrders();
+        updateTotals();
+        await loadStocks(); // refresh stock numbers
+      } catch(e) {
+        console.log(e);
+      }
+
+      qtyEl.value = 1;
+      document.getElementById("notes").value = "";
+      document.getElementById("price").value = 0;
+      document.getElementById("status").value = "pending";
+    };
+
+    exportBtn.onclick = () => {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(orders, null, 2));
+      const a = document.createElement("a");
+      a.href = dataStr;
+      a.download = "orders.json";
+      a.click();
+    };
+
+    // save edited order
+    saveEditBtn.onclick = async () => {
+      if (!editingOrderId) return;
+      const ord = orders.find(o => String(o.id) === String(editingOrderId));
+      if (!ord) return;
+      const body = {
+        ...ord,
+        price: Number(editPrice.value || 0),
+        status: editStatus.value,
+        qty: Number(editQty.value || 1),
+        notes: editNotes.value || ""
+      };
+      try {
+        const res = await fetch(`/api/orders/${editingOrderId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          alert(data.error || "edit failed");
+          return;
+        }
+        const idx = orders.findIndex(o => String(o.id) === String(editingOrderId));
+        orders[idx] = data.order;
+        renderOrders();
+        updateTotals();
+        await loadStocks();
+        editPanel.classList.remove("show");
+        editingOrderId = null;
+      } catch(e) {
+        console.log(e);
+      }
+    };
+
+    closeEditBtn.onclick = () => {
+      editPanel.classList.remove("show");
+      editingOrderId = null;
+    };
+
+    async function loadStocks() {
+      try {
+        const res = await fetch("/api/stocks");
+        const data = await res.json();
+        stockItems = data;
+        renderStockList();
+        fillOrderStockItems(productCategoryEl.value);
+      } catch(e) {
+        console.log(e);
+      }
     }
-  } catch (err) {
-    console.log("Could not reach backend", err);
-  }
 
-  // 2) update UI locally
-  orders.push({ ...body, createdAt: new Date().toISOString() });
-  decreaseStock(stockItemId, size, qty);
-  renderOrders();
-  qtyEl.value = 1;
-  document.getElementById("notes").value = "";
-});
-
-
-    exportBtn.addEventListener("click", () => {
-      const dataStr = JSON.stringify(orders, null, 2);
-      const win = window.open();
-      win.document.write("<pre>" + dataStr + "</pre>");
-      win.document.close();
-    });
+    async function loadOrders() {
+      try {
+        const res = await fetch("/api/orders");
+        const data = await res.json();
+        orders = Array.isArray(data) ? data.sort((a,b) => (b.id||0) - (a.id||0)) : [];
+        renderOrders();
+        updateTotals();
+      } catch(e) {
+        console.log(e);
+      }
+    }
 
     // INIT
     renderCategorySelects();
-    renderStockSizeControls(categories[0].id);
-    fillOrderStockItems(categories[0].id);
+    renderStockSizesAreaFor(categories[0].id);
+    loadStocks().then(() => {
+      productCategoryEl.value = categories[0].id;
+      fillOrderStockItems(categories[0].id);
+    });
+    loadOrders();
+
+    newCategoryEl.addEventListener("change", () => {
+      renderStockSizesAreaFor(newCategoryEl.value);
+    });
   </script>
 </body>
 </html>
