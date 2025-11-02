@@ -140,116 +140,191 @@ app.get("/api/orders", async (req, res) => {
   res.json(orders.map(orderToClient));
 });
 
+// CREATE order + decrease stock
 app.post("/api/orders", async (req, res) => {
-  const {
-    customerName,
-    phone,
-    address,
-    payment,
-    category,
-    itemId,
-    itemName,
-    size,
-    qty,
-    notes,
-    price,
-    status,
-  } = req.body;
+  try {
+    const {
+      customerName,
+      phone,
+      address,
+      payment,
+      category,
+      itemId,
+      itemName,
+      size,
+      qty,
+      notes,
+      price,
+      status,
+    } = req.body;
 
-  if (!customerName || !phone || !itemId || !size) {
-    return res.status(400).json({ error: "missing fields" });
+    if (!customerName || !phone || !itemId || !size) {
+      return res.status(400).json({ error: "missing fields" });
+    }
+
+    const want = Number(qty || 1);
+
+    // get stock
+    const stock = await Stock.findById(itemId);
+    if (!stock) return res.status(400).json({ error: "stock item not found" });
+
+    const currentQty = Number((stock.sizes && stock.sizes[size]) || 0);
+
+    if (currentQty < want) {
+      return res
+        .status(400)
+        .json({ error: "not enough stock", available: currentQty });
+    }
+
+    // decrease
+    stock.sizes[size] = currentQty - want;
+    await stock.save();
+
+    // create order
+    const order = await Order.create({
+      customerName,
+      phone,
+      address: address || "",
+      payment: payment || "cash",
+      category,
+      itemId,
+      itemName: itemName || stock.name,
+      size,
+      qty: want,
+      notes: notes || "",
+      price: Number(price || 0),
+      status: status || "pending",
+    });
+
+    // send back both order and fresh stocks
+    const freshStocks = await Stock.find().sort({ createdAt: -1 });
+
+    res.json({
+      ok: true,
+      order: orderToClient(order),
+      stocks: freshStocks.map(stockToClient),
+    });
+  } catch (err) {
+    console.error("create order error", err);
+    res.status(500).json({ error: "server error" });
   }
-
-  const stock = await Stock.findById(itemId);
-  if (!stock) return res.status(400).json({ error: "stock item not found" });
-
-  const want = Number(qty || 1);
-  const available = Number((stock.sizes && stock.sizes[size]) || 0);
-  if (available < want) {
-    return res.status(400).json({ error: "not enough stock", available });
-  }
-
-  // decrease
-  stock.sizes[size] = available - want;
-  await stock.save();
-
-  const order = await Order.create({
-    customerName,
-    phone,
-    address: address || "",
-    payment: payment || "cash",
-    category,
-    itemId,
-    itemName: itemName || stock.name,
-    size,
-    qty: want,
-    notes: notes || "",
-    price: Number(price || 0),
-    status: status || "pending",
-  });
-
-  res.json({ ok: true, order: orderToClient(order) });
 });
 
+// UPDATE order (qty change = fix stock)
 app.put("/api/orders/:id", async (req, res) => {
-  const { id } = req.params;
-  const body = req.body;
+  try {
+    const { id } = req.params;
+    const body = req.body;
 
-  const order = await Order.findById(id);
-  if (!order) return res.status(404).json({ error: "order not found" });
+    const order = await Order.findById(id);
+    if (!order) return res.status(404).json({ error: "order not found" });
 
-  const oldQty = order.qty;
-  const newQty = body.qty !== undefined ? Number(body.qty) : oldQty;
+    const oldQty = order.qty;
+    const oldItemId = order.itemId?.toString();
+    const oldSize = order.size;
 
-  if (newQty !== oldQty) {
-    const stock = await Stock.findById(order.itemId);
-    if (!stock) return res.status(400).json({ error: "stock item missing" });
+    const newQty = body.qty !== undefined ? Number(body.qty) : oldQty;
+    const newItemId = body.itemId || oldItemId;
+    const newSize = body.size || oldSize;
 
-    const current = Number((stock.sizes && stock.sizes[order.size]) || 0);
-    const diff = newQty - oldQty;
+    // case 1: same item + same size → just adjust number
+    if (newItemId === oldItemId && newSize === oldSize) {
+      const stock = await Stock.findById(newItemId);
+      if (!stock) return res.status(400).json({ error: "stock item missing" });
 
-    if (diff > 0) {
-      if (current < diff) {
+      const currentInDb = Number(stock.sizes[newSize] || 0);
+      const diff = newQty - oldQty;
+
+      if (diff > 0) {
+        // need more from stock
+        if (currentInDb < diff) {
+          return res
+            .status(400)
+            .json({ error: "not enough stock to increase", available: currentInDb });
+        }
+        stock.sizes[newSize] = currentInDb - diff;
+      } else if (diff < 0) {
+        // return to stock
+        stock.sizes[newSize] = currentInDb + Math.abs(diff);
+      }
+
+      await stock.save();
+    } else {
+      // case 2: user changed item or size
+      // 2a) return old qty to old stock
+      const oldStock = await Stock.findById(oldItemId);
+      if (oldStock) {
+        const oldCount = Number(oldStock.sizes[oldSize] || 0);
+        oldStock.sizes[oldSize] = oldCount + oldQty;
+        await oldStock.save();
+      }
+      // 2b) remove from new stock
+      const newStock = await Stock.findById(newItemId);
+      if (!newStock)
+        return res.status(400).json({ error: "new stock item missing" });
+
+      const newCount = Number(newStock.sizes[newSize] || 0);
+      if (newCount < newQty) {
         return res
           .status(400)
-          .json({ error: "not enough stock to increase", available: current });
+          .json({ error: "not enough stock for new item", available: newCount });
       }
-      stock.sizes[order.size] = current - diff;
-    } else if (diff < 0) {
-      stock.sizes[order.size] = current + Math.abs(diff);
+      newStock.sizes[newSize] = newCount - newQty;
+      await newStock.save();
     }
-    await stock.save();
+
+    // now update order fields
+    order.customerName = body.customerName ?? order.customerName;
+    order.phone = body.phone ?? order.phone;
+    order.address = body.address ?? order.address;
+    order.payment = body.payment ?? order.payment;
+    order.category = body.category ?? order.category;
+    order.itemId = newItemId;
+    order.itemName = body.itemName ?? order.itemName;
+    order.size = newSize;
+    order.qty = newQty;
+    order.notes = body.notes ?? order.notes;
+    order.price = body.price ?? order.price;
+    order.status = body.status ?? order.status;
+
+    await order.save();
+
+    const freshStocks = await Stock.find().sort({ createdAt: -1 });
+
+    res.json({
+      ok: true,
+      order: orderToClient(order),
+      stocks: freshStocks.map(stockToClient),
+    });
+  } catch (err) {
+    console.error("edit order error", err);
+    res.status(500).json({ error: "server error" });
   }
-
-  order.customerName = body.customerName ?? order.customerName;
-  order.phone = body.phone ?? order.phone;
-  order.address = body.address ?? order.address;
-  order.payment = body.payment ?? order.payment;
-  order.category = body.category ?? order.category;
-  order.size = body.size ?? order.size;
-  order.qty = newQty;
-  order.notes = body.notes ?? order.notes;
-  order.price = body.price ?? order.price;
-  order.status = body.status ?? order.status;
-
-  await order.save();
-  res.json({ ok: true, order: orderToClient(order) });
 });
 
+// DELETE order (return its qty to stock)
 app.delete("/api/orders/:id", async (req, res) => {
-  const { id } = req.params;
-  const order = await Order.findById(id);
-  if (!order) return res.status(404).json({ error: "order not found" });
+  try {
+    const { id } = req.params;
+    const order = await Order.findById(id);
+    if (!order) return res.status(404).json({ error: "order not found" });
 
-  const stock = await Stock.findById(order.itemId);
-  if (stock) {
-    const current = Number((stock.sizes && stock.sizes[order.size]) || 0);
-    stock.sizes[order.size] = current + order.qty;
-    await stock.save();
+    const stock = await Stock.findById(order.itemId);
+    if (stock) {
+      const current = Number(stock.sizes[order.size] || 0);
+      stock.sizes[order.size] = current + order.qty;
+      await stock.save();
+    }
+
+    await Order.deleteOne({ _id: id });
+
+    const freshStocks = await Stock.find().sort({ createdAt: -1 });
+
+    res.json({ ok: true, stocks: freshStocks.map(stockToClient) });
+  } catch (err) {
+    console.error("delete order error", err);
+    res.status(500).json({ error: "server error" });
   }
-
-  await Order.deleteOne({ _id: id });
-  res.json({ ok: true });
 });
 
 // fallback → send frontend
