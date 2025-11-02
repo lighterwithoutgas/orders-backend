@@ -1,106 +1,160 @@
-// server.js
-import express from "express";
-import cors from "cors";
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// server.js - Mongo version
+const express = require("express");
+const cors = require("cors");
+const path = require("path");
+const mongoose = require("mongoose");
 
 const app = express();
-
 app.use(cors());
 app.use(express.json());
 
 // serve frontend
-app.use(express.static(path.join(__dirname, "public")));
+const publicPath = path.join(__dirname, "public");
+app.use(express.static(publicPath));
 
-const ORDERS_FILE = path.join(__dirname, "orders.json");
-const STOCKS_FILE = path.join(__dirname, "stocks.json");
+// ====== MONGO CONNECT ======
+const MONGODB_URI =
+  process.env.MONGODB_URI ||
+  "mongodb://127.0.0.1:27017/ordersdb";
 
-function readJson(file, fallback) {
-  if (!fs.existsSync(file)) {
-    fs.writeFileSync(file, JSON.stringify(fallback, null, 2), "utf8");
-    return fallback;
-  }
-  try {
-    return JSON.parse(fs.readFileSync(file, "utf8"));
-  } catch (e) {
-    return fallback;
-  }
+mongoose
+  .connect(MONGODB_URI)
+  .then(() => console.log("✅ Mongo connected"))
+  .catch((err) => {
+    console.error("❌ Mongo error", err);
+    process.exit(1);
+  });
+
+// ====== SCHEMAS ======
+const stockSchema = new mongoose.Schema(
+  {
+    // hoodie / pants / jeans / tshirt ...
+    category: { type: String, required: true },
+    name: { type: String, required: true },
+    // sizes example: { M: 3, L: 5, XL: 0 }
+    sizes: { type: Object, default: {} },
+  },
+  { timestamps: true }
+);
+
+const orderSchema = new mongoose.Schema(
+  {
+    customerName: { type: String, required: true },
+    phone: { type: String, required: true },
+    address: { type: String, default: "" },
+    payment: { type: String, default: "cash" },
+    category: { type: String, required: true },
+    itemId: { type: mongoose.Schema.Types.ObjectId, ref: "Stock" },
+    itemName: { type: String, default: "" },
+    size: { type: String, required: true },
+    qty: { type: Number, default: 1 },
+    notes: { type: String, default: "" },
+    price: { type: Number, default: 0 },
+    status: { type: String, default: "pending" }, // pending / delivered / canceled
+  },
+  { timestamps: true }
+);
+
+const Stock = mongoose.model("Stock", stockSchema);
+const Order = mongoose.model("Order", orderSchema);
+
+// ====== HELPERS ======
+function stockDocToClient(doc) {
+  return {
+    id: doc._id.toString(),
+    category: doc.category,
+    name: doc.name,
+    sizes: doc.sizes || {},
+    createdAt: doc.createdAt,
+    updatedAt: doc.updatedAt,
+  };
 }
 
-function writeJson(file, data) {
-  fs.writeFileSync(file, JSON.stringify(data, null, 2), "utf8");
+function orderDocToClient(doc) {
+  return {
+    id: doc._id.toString(),
+    customerName: doc.customerName,
+    phone: doc.phone,
+    address: doc.address,
+    payment: doc.payment,
+    category: doc.category,
+    itemId: doc.itemId ? doc.itemId.toString() : null,
+    itemName: doc.itemName,
+    size: doc.size,
+    qty: doc.qty,
+    notes: doc.notes,
+    price: doc.price,
+    status: doc.status,
+    createdAt: doc.createdAt,
+    updatedAt: doc.updatedAt,
+  };
 }
+
+// ====== ROUTES ======
+
+// health
+app.get("/api", (req, res) => {
+  res.json({ ok: true, message: "Orders API is running (mongo)" });
+});
 
 // ---------- STOCKS ----------
 
-// get all stocks
-app.get("/api/stocks", (req, res) => {
-  const stocks = readJson(STOCKS_FILE, []);
-  res.json(stocks);
+// GET /api/stocks
+app.get("/api/stocks", async (req, res) => {
+  const stocks = await Stock.find().sort({ createdAt: -1 });
+  res.json(stocks.map(stockDocToClient));
 });
 
-// create stock
-app.post("/api/stocks", (req, res) => {
-  const { id, category, name, sizes } = req.body;
-  if (!category || !name) return res.status(400).json({ error: "category and name required" });
-
-  const stocks = readJson(STOCKS_FILE, []);
-  // create new
-  const newItem = {
-    id: "stk-" + Math.random().toString(36).slice(2, 9),
+// POST /api/stocks
+app.post("/api/stocks", async (req, res) => {
+  const { category, name, sizes } = req.body;
+  if (!category || !name) {
+    return res.status(400).json({ error: "category and name are required" });
+  }
+  const stock = await Stock.create({
     category,
     name,
-    sizes: sizes || {}
-  };
-  stocks.push(newItem);
-  writeJson(STOCKS_FILE, stocks);
-  res.json({ ok: true, stock: newItem });
+    sizes: sizes || {},
+  });
+  res.json({ ok: true, stock: stockDocToClient(stock) });
 });
 
-// edit stock (name/category/sizes)
-app.put("/api/stocks/:id", (req, res) => {
-  const stockId = req.params.id;
+// PUT /api/stocks/:id
+app.put("/api/stocks/:id", async (req, res) => {
+  const { id } = req.params;
   const { category, name, sizes } = req.body;
-  const stocks = readJson(STOCKS_FILE, []);
-  const idx = stocks.findIndex(s => s.id === stockId);
-  if (idx === -1) return res.status(404).json({ error: "stock not found" });
 
-  const updated = {
-    ...stocks[idx],
-    category: category ?? stocks[idx].category,
-    name: name ?? stocks[idx].name,
-    sizes: sizes ?? stocks[idx].sizes
-  };
+  const stock = await Stock.findById(id);
+  if (!stock) return res.status(404).json({ error: "stock not found" });
 
-  stocks[idx] = updated;
-  writeJson(STOCKS_FILE, stocks);
-  res.json({ ok: true, stock: updated });
+  if (category !== undefined) stock.category = category;
+  if (name !== undefined) stock.name = name;
+  if (sizes !== undefined) stock.sizes = sizes;
+
+  await stock.save();
+  res.json({ ok: true, stock: stockDocToClient(stock) });
 });
 
-// delete stock
-app.delete("/api/stocks/:id", (req, res) => {
-  const stockId = req.params.id;
-  const stocks = readJson(STOCKS_FILE, []);
-  const idx = stocks.findIndex(s => s.id === stockId);
-  if (idx === -1) return res.status(404).json({ error: "stock not found" });
+// DELETE /api/stocks/:id
+app.delete("/api/stocks/:id", async (req, res) => {
+  const { id } = req.params;
+  const stock = await Stock.findById(id);
+  if (!stock) return res.status(404).json({ error: "stock not found" });
 
-  stocks.splice(idx, 1);
-  writeJson(STOCKS_FILE, stocks);
+  await Stock.deleteOne({ _id: id });
   res.json({ ok: true });
 });
 
 // ---------- ORDERS ----------
 
-app.get("/api/orders", (req, res) => {
-  const orders = readJson(ORDERS_FILE, []);
-  res.json(orders);
+// GET /api/orders
+app.get("/api/orders", async (req, res) => {
+  const orders = await Order.find().sort({ createdAt: -1 });
+  res.json(orders.map(orderDocToClient));
 });
 
-app.post("/api/orders", (req, res) => {
+// POST /api/orders
+app.post("/api/orders", async (req, res) => {
   const {
     customerName,
     phone,
@@ -113,7 +167,7 @@ app.post("/api/orders", (req, res) => {
     qty,
     notes,
     price,
-    status
+    status,
   } = req.body;
 
   if (!customerName || !phone || !itemId || !size) {
@@ -121,109 +175,112 @@ app.post("/api/orders", (req, res) => {
   }
 
   // check stock
-  const stocks = readJson(STOCKS_FILE, []);
-  const stockItem = stocks.find(s => s.id === itemId);
-  if (!stockItem) return res.status(400).json({ error: "stock item not found" });
+  const stock = await Stock.findById(itemId);
+  if (!stock) return res.status(400).json({ error: "stock item not found" });
 
-  const currentQty = Number(stockItem.sizes?.[size] || 0);
-  const wanted = Number(qty || 1);
-  if (currentQty < wanted) {
-    return res.status(400).json({ error: "not enough stock", available: currentQty });
+  const want = Number(qty || 1);
+  const available = Number((stock.sizes && stock.sizes[size]) || 0);
+
+  if (available < want) {
+    return res.status(400).json({ error: "not enough stock", available });
   }
 
   // decrease stock
-  stockItem.sizes[size] = currentQty - wanted;
-  writeJson(STOCKS_FILE, stocks);
+  stock.sizes[size] = available - want;
+  await stock.save();
 
-  const orders = readJson(ORDERS_FILE, []);
-  const newOrder = {
-    id: Date.now(),
+  const order = await Order.create({
     customerName,
     phone,
-    address,
-    payment,
+    address: address || "",
+    payment: payment || "cash",
     category,
     itemId,
-    itemName,
+    itemName: itemName || stock.name,
     size,
-    qty: wanted,
+    qty: want,
     notes: notes || "",
     price: Number(price || 0),
     status: status || "pending",
-    createdAt: new Date().toISOString()
-  };
-  orders.push(newOrder);
-  writeJson(ORDERS_FILE, orders);
+  });
 
-  res.json({ ok: true, order: newOrder });
+  res.json({ ok: true, order: orderDocToClient(order) });
 });
 
-// update order (adjust stock on qty change)
-app.put("/api/orders/:id", (req, res) => {
-  const orderId = Number(req.params.id);
+// PUT /api/orders/:id
+app.put("/api/orders/:id", async (req, res) => {
+  const { id } = req.params;
   const body = req.body;
 
-  const orders = readJson(ORDERS_FILE, []);
-  const idx = orders.findIndex(o => o.id === orderId);
-  if (idx === -1) return res.status(404).json({ error: "order not found" });
+  const order = await Order.findById(id);
+  if (!order) return res.status(404).json({ error: "order not found" });
 
-  const oldOrder = orders[idx];
-  const newQty = body.qty !== undefined ? Number(body.qty) : oldOrder.qty;
+  const oldQty = order.qty;
+  const newQty = body.qty !== undefined ? Number(body.qty) : oldQty;
 
-  // if qty changed -> update stock
-  if (newQty !== oldOrder.qty) {
-    const diff = newQty - oldOrder.qty;
-    const stocks = readJson(STOCKS_FILE, []);
-    const stockItem = stocks.find(s => s.id === oldOrder.itemId);
-    if (!stockItem) return res.status(400).json({ error: "stock item missing" });
-    const currentQty = Number(stockItem.sizes?.[oldOrder.size] || 0);
+  // adjust stock if qty changed
+  if (newQty !== oldQty) {
+    const stock = await Stock.findById(order.itemId);
+    if (!stock) return res.status(400).json({ error: "stock item missing" });
+
+    const current = Number((stock.sizes && stock.sizes[order.size]) || 0);
+    const diff = newQty - oldQty;
 
     if (diff > 0) {
       // need more
-      if (currentQty < diff) {
-        return res.status(400).json({ error: "not enough stock to increase", available: currentQty });
+      if (current < diff) {
+        return res
+          .status(400)
+          .json({ error: "not enough stock to increase", available: current });
       }
-      stockItem.sizes[oldOrder.size] = currentQty - diff;
+      stock.sizes[order.size] = current - diff;
     } else if (diff < 0) {
-      // return stock
-      stockItem.sizes[oldOrder.size] = currentQty + Math.abs(diff);
+      // return back to stock
+      stock.sizes[order.size] = current + Math.abs(diff);
     }
-    writeJson(STOCKS_FILE, stocks);
+    await stock.save();
   }
 
-  const updated = {
-    ...oldOrder,
-    ...body,
-    qty: newQty
-  };
-  orders[idx] = updated;
-  writeJson(ORDERS_FILE, orders);
-  res.json({ ok: true, order: updated });
+  // update order fields
+  order.customerName = body.customerName ?? order.customerName;
+  order.phone = body.phone ?? order.phone;
+  order.address = body.address ?? order.address;
+  order.payment = body.payment ?? order.payment;
+  order.category = body.category ?? order.category;
+  order.size = body.size ?? order.size;
+  order.qty = newQty;
+  order.notes = body.notes ?? order.notes;
+  order.price = body.price ?? order.price;
+  order.status = body.status ?? order.status;
+
+  await order.save();
+  res.json({ ok: true, order: orderDocToClient(order) });
 });
 
-app.delete("/api/orders/:id", (req, res) => {
-  const orderId = Number(req.params.id);
-  const orders = readJson(ORDERS_FILE, []);
-  const idx = orders.findIndex(o => o.id === orderId);
-  if (idx === -1) return res.status(404).json({ error: "order not found" });
-
-  const order = orders[idx];
+// DELETE /api/orders/:id
+app.delete("/api/orders/:id", async (req, res) => {
+  const { id } = req.params;
+  const order = await Order.findById(id);
+  if (!order) return res.status(404).json({ error: "order not found" });
 
   // return stock
-  const stocks = readJson(STOCKS_FILE, []);
-  const stockItem = stocks.find(s => s.id === order.itemId);
-  if (stockItem) {
-    const currentQty = Number(stockItem.sizes?.[order.size] || 0);
-    stockItem.sizes[order.size] = currentQty + order.qty;
-    writeJson(STOCKS_FILE, stocks);
+  const stock = await Stock.findById(order.itemId);
+  if (stock) {
+    const current = Number((stock.sizes && stock.sizes[order.size]) || 0);
+    stock.sizes[order.size] = current + order.qty;
+    await stock.save();
   }
 
-  orders.splice(idx, 1);
-  writeJson(ORDERS_FILE, orders);
+  await Order.deleteOne({ _id: id });
   res.json({ ok: true });
+});
+
+// fallback: if you open root "/"
+app.get("*", (req, res) => {
+  res.sendFile(path.join(publicPath, "index.html"));
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log("running on " + PORT);
+  console.log("🚀 server running on port " + PORT);
 });
