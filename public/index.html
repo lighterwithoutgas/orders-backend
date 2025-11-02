@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Ghorza Orders</title>
+  <title>Business Orders</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     :root {
@@ -193,7 +193,7 @@
     </div>
   </header>
 
-  <!-- EDIT ORDER PANEL -->
+  <!-- EDIT PANEL -->
   <div id="editPanel" class="edit-panel">
     <h3>Edit order</h3>
     <label>Customer name</label>
@@ -258,7 +258,7 @@
       </div>
       <div class="two-col form-group">
         <div>
-          <label for="price">Price (shekel)</label>
+          <label for="price">Price</label>
           <input id="price" type="number" min="0" value="0" />
         </div>
         <div>
@@ -337,7 +337,7 @@
       <div class="add-cat-box">
         <small>Add new category</small>
         <div class="two-col" style="gap:.35rem;">
-          <input id="newCategoryName" type="text"  />
+          <input id="newCategoryName" type="text" placeholder="e.g. T-Shirts" />
           <button id="addCategoryBtn">Add</button>
         </div>
       </div>
@@ -367,13 +367,8 @@
   </div>
 
   <script>
-    // default / built-in categories (front only)
-    let categories = [
-      { id: "hoodie", name: "Hoodie", sizes: ["M", "L", "XL", "2XL"] },
-      { id: "pants", name: "Pants", sizes: ["M", "L", "XL", "2XL"] },
-      { id: "jeans", name: "Jeans", sizes: ["30", "32", "34", "36", "38"] }
-    ];
-
+    // NOW categories are from the backend
+    let categories = [];
     let stockItems = [];
     let orders = [];
     let editingOrderId = null;
@@ -405,7 +400,6 @@
     const totalDeliveredEl = document.getElementById("totalDelivered");
     const totalPendingEl = document.getElementById("totalPending");
 
-    // edit elements
     const editPanel = document.getElementById("editPanel");
     const editCustomer = document.getElementById("editCustomer");
     const editPhone = document.getElementById("editPhone");
@@ -421,48 +415,47 @@
     const saveEditBtn = document.getElementById("saveEditBtn");
     const closeEditBtn = document.getElementById("closeEditBtn");
 
-    // helpers
     function renderCategorySelects() {
-      // orders form
+      // orders
       productCategoryEl.innerHTML = "";
       categories.forEach(cat => {
         const opt = document.createElement("option");
-        opt.value = cat.id;
+        opt.value = cat.slug;
         opt.textContent = cat.name;
         productCategoryEl.appendChild(opt);
       });
-      // stock form
+      // stocks
       newCategoryEl.innerHTML = "";
       categories.forEach(cat => {
         const opt = document.createElement("option");
-        opt.value = cat.id;
+        opt.value = cat.slug;
         opt.textContent = cat.name;
         newCategoryEl.appendChild(opt);
       });
-      // edit order form
+      // edit order
       editCategory.innerHTML = "";
       categories.forEach(cat => {
         const opt = document.createElement("option");
-        opt.value = cat.id;
+        opt.value = cat.slug;
         opt.textContent = cat.name;
         editCategory.appendChild(opt);
       });
-      // category list (with delete)
+      // list with delete
       categoriesListEl.innerHTML = "";
       categories.forEach(cat => {
         const row = document.createElement("div");
         row.className = "cat-row";
         row.innerHTML = `
           <span>${cat.name}</span>
-          <button class="actions-btn" data-del-cat="${cat.id}">Del</button>
+          <button class="actions-btn" data-del-cat="${cat.slug}">Del</button>
         `;
         categoriesListEl.appendChild(row);
       });
     }
 
-    function renderStockSizesAreaFor(categoryId) {
+    function renderStockSizesAreaFor(categorySlug) {
       stockSizesArea.innerHTML = "";
-      const cat = categories.find(c => c.id === categoryId);
+      const cat = categories.find(c => c.slug === categorySlug);
       const sizes = (cat && cat.sizes && cat.sizes.length) ? cat.sizes : ["S","M","L"];
       sizes.forEach(sz => {
         const row = document.createElement("div");
@@ -478,7 +471,7 @@
     function renderStockList() {
       stockList.innerHTML = "";
       stockItems.forEach(item => {
-        const cat = categories.find(c => c.id === item.category);
+        const cat = categories.find(c => c.slug === item.category);
         const sizesHtml = Object.entries(item.sizes || {})
           .map(([s,q]) => `<div class="size-row"><span>${s}</span><span class="badge">${q}</span></div>`)
           .join("");
@@ -501,9 +494,9 @@
       });
     }
 
-    function fillOrderStockItems(categoryId) {
+    function fillOrderStockItems(categorySlug) {
       stockItemSelectEl.innerHTML = "";
-      const items = stockItems.filter(i => i.category === categoryId);
+      const items = stockItems.filter(i => i.category === categorySlug);
       if (items.length === 0) {
         const opt = document.createElement("option");
         opt.textContent = "No items";
@@ -556,7 +549,7 @@
     function renderOrders() {
       ordersTableBody.innerHTML = "";
       orders.forEach((o, i) => {
-        const cat = categories.find(c => c.id === o.category);
+        const cat = categories.find(c => c.slug === o.category);
         const tr = document.createElement("tr");
         tr.innerHTML = `
           <td>${i+1}</td>
@@ -577,7 +570,6 @@
         ordersTableBody.appendChild(tr);
       });
 
-      // delete order
       document.querySelectorAll("[data-del]").forEach(btn => {
         btn.onclick = async () => {
           const id = btn.dataset.del;
@@ -590,7 +582,6 @@
         };
       });
 
-      // edit order
       document.querySelectorAll("[data-edit]").forEach(btn => {
         btn.onclick = () => {
           const id = btn.dataset.edit;
@@ -613,9 +604,9 @@
       });
     }
 
-    function fillEditItems(categoryId, selectedItemId) {
+    function fillEditItems(categorySlug, selectedItemId) {
       editItem.innerHTML = "";
-      const items = stockItems.filter(i => i.category === categoryId);
+      const items = stockItems.filter(i => i.category === categorySlug);
       items.forEach(it => {
         const opt = document.createElement("option");
         opt.value = it.id;
@@ -638,7 +629,6 @@
       });
     }
 
-    // tabs
     tabBtns.forEach(btn => {
       btn.addEventListener("click", () => {
         tabBtns.forEach(b => b.classList.remove("active"));
@@ -653,56 +643,61 @@
       });
     });
 
-    // add category (front) — also calls backend delete when removing
-    addCategoryBtn.addEventListener("click", () => {
+    // add category -> backend
+    addCategoryBtn.addEventListener("click", async () => {
       const name = newCategoryNameEl.value.trim();
       if (!name) return;
-      const id = name.toLowerCase().replace(/\s+/g, "-");
-      if (categories.some(c => c.id === id)) {
-        alert("Category already exists");
-        return;
+      try {
+        const res = await fetch("/api/categories", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          alert(data.error || "error");
+          return;
+        }
+        categories.push(data.category);
+        renderCategorySelects();
+        renderStockSizesAreaFor(data.category.slug);
+        newCategoryNameEl.value = "";
+      } catch(e) {
+        console.log(e);
       }
-      categories.push({ id, name, sizes: [] });
-      renderCategorySelects();
-      renderStockSizesAreaFor(id);
-      newCategoryNameEl.value = "";
     });
 
-    // delete category (frontend + backend)
+    // delete category (real from db)
     categoriesListEl.addEventListener("click", async (e) => {
-      const catId = e.target.dataset.delCat;
-      if (!catId) return;
-      const cat = categories.find(c => c.id === catId);
+      const slug = e.target.dataset.delCat;
+      if (!slug) return;
+      const cat = categories.find(c => c.slug === slug);
       if (!cat) return;
-      if (!confirm(`Delete category "${cat.name}" and all its stock & orders?`)) return;
-
-      // call backend to delete all stocks + orders of that category
-      await fetch(`/api/categories/${encodeURIComponent(catId)}`, {
-        method: "DELETE"
-      }).catch(() => {});
-
-      // remove from local list
-      categories = categories.filter(c => c.id !== catId);
-
-      // also remove any stock of this category from local cache
-      stockItems = stockItems.filter(s => s.category !== catId);
-
+      if (!confirm(`Delete category "${cat.name}" and all its items and orders?`)) return;
+      await fetch(`/api/categories/${encodeURIComponent(slug)}`, { method: "DELETE" }).catch(()=>{});
+      // remove from local
+      categories = categories.filter(c => c.slug !== slug);
+      // remove stocks in that category from local
+      stockItems = stockItems.filter(s => s.category !== slug);
       renderCategorySelects();
       renderStockList();
-      fillOrderStockItems(productCategoryEl.value);
+      if (categories.length > 0) {
+        productCategoryEl.value = categories[0].slug;
+        fillOrderStockItems(categories[0].slug);
+        renderStockSizesAreaFor(categories[0].slug);
+      }
     });
 
-    // stock category change (sizes)
     newCategoryEl.addEventListener("change", () => {
       renderStockSizesAreaFor(newCategoryEl.value);
     });
 
-    // save stock (create or edit)
+    // save stock
     saveStockItemBtn.onclick = async () => {
       const category = newCategoryEl.value;
       const name = stockNameEl.value.trim();
       if (!name) {
-        alert("write stock name");
+        alert("name?");
         return;
       }
       const sizes = {};
@@ -748,7 +743,6 @@
       renderStockSizesAreaFor(category);
     };
 
-    // list edit / delete
     stockList.addEventListener("click", async (e) => {
       const editId = e.target.dataset.stockEdit;
       const delId = e.target.dataset.stockDel;
@@ -775,18 +769,15 @@
       }
     });
 
-    // change order category
     productCategoryEl.addEventListener("change", () => {
       fillOrderStockItems(productCategoryEl.value);
     });
 
-    // change order item
     stockItemSelectEl.addEventListener("change", () => {
       const item = stockItems.find(i => i.id === stockItemSelectEl.value);
       if (item) fillOrderSizesFromItem(item);
     });
 
-    // add order
     addOrderBtn.onclick = async () => {
       const customerName = document.getElementById("customerName").value.trim();
       const phone = document.getElementById("phone").value.trim();
@@ -861,7 +852,6 @@
       document.getElementById("status").value = "pending";
     };
 
-    // export
     exportBtn.onclick = () => {
       const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(orders, null, 2));
       const a = document.createElement("a");
@@ -870,7 +860,6 @@
       a.click();
     };
 
-    // edit panel events
     editCategory.addEventListener("change", () => {
       const catId = editCategory.value;
       fillEditItems(catId);
@@ -927,13 +916,31 @@
       editingOrderId = null;
     };
 
+    async function loadCategories() {
+      try {
+        const res = await fetch("/api/categories");
+        const data = await res.json();
+        categories = Array.isArray(data) ? data : [];
+        renderCategorySelects();
+        if (categories.length > 0) {
+          renderStockSizesAreaFor(categories[0].slug);
+        }
+      } catch(e) {
+        console.log(e);
+      }
+    }
+
     async function loadStocks() {
       try {
         const res = await fetch("/api/stocks");
         const data = await res.json();
         stockItems = data.map(s => ({ ...s, id: s.id || s._id }));
         renderStockList();
-        fillOrderStockItems(productCategoryEl.value);
+        if (categories.length > 0) {
+          const cur = productCategoryEl.value || categories[0].slug;
+          productCategoryEl.value = cur;
+          fillOrderStockItems(cur);
+        }
       } catch(e) {
         console.log(e);
       }
@@ -952,12 +959,9 @@
     }
 
     // INIT
-    renderCategorySelects();
-    renderStockSizesAreaFor(categories[0].id);
     (async () => {
+      await loadCategories();
       await loadStocks();
-      productCategoryEl.value = categories[0].id;
-      fillOrderStockItems(categories[0].id);
       await loadOrders();
     })();
   </script>

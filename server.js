@@ -12,7 +12,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// serve frontend (public/index.html)
+// serve frontend
 const publicPath = path.join(__dirname, "public");
 app.use(express.static(publicPath));
 
@@ -29,13 +29,23 @@ await mongoose
   });
 
 // ====== SCHEMAS ======
+
+// CATEGORY lives in DB now
+// we use slug as the main id ("hoodie", "pants", ...)
+const categorySchema = new mongoose.Schema(
+  {
+    slug: { type: String, required: true, unique: true }, // hoodie
+    name: { type: String, required: true }, // Hoodie
+    sizes: { type: [String], default: [] } // ["M","L","XL"]
+  },
+  { timestamps: true }
+);
+
 const stockSchema = new mongoose.Schema(
   {
-    category: { type: String, required: true }, // e.g. "hoodie"
-    name: { type: String, required: true }, // e.g. "Black hoodie"
-    // we store sizes as a plain object
-    // { "M": 4, "L": 2 }
-    sizes: { type: Object, default: {} },
+    category: { type: String, required: true }, // category slug
+    name: { type: String, required: true },
+    sizes: { type: Object, default: {} }, // { M: 4, L: 2 }
   },
   { timestamps: true }
 );
@@ -46,22 +56,30 @@ const orderSchema = new mongoose.Schema(
     phone: { type: String, required: true },
     address: { type: String, default: "" },
     payment: { type: String, default: "cash" },
-    category: { type: String, required: true }, // hoodie / jeans / ...
+    category: { type: String, required: true }, // category slug
     itemId: { type: mongoose.Schema.Types.ObjectId, ref: "Stock" },
     itemName: { type: String, default: "" },
     size: { type: String, required: true },
     qty: { type: Number, default: 1 },
     notes: { type: String, default: "" },
     price: { type: Number, default: 0 },
-    status: { type: String, default: "pending" }, // pending | on-delivery | delivered
+    status: { type: String, default: "pending" },
   },
   { timestamps: true }
 );
 
+const Category = mongoose.model("Category", categorySchema);
 const Stock = mongoose.model("Stock", stockSchema);
 const Order = mongoose.model("Order", orderSchema);
 
 // ====== HELPERS ======
+const catToClient = (c) => ({
+  id: c._id.toString(),
+  slug: c.slug,
+  name: c.name,
+  sizes: c.sizes || [],
+});
+
 const stockToClient = (doc) => ({
   id: doc._id.toString(),
   category: doc.category,
@@ -89,22 +107,84 @@ const orderToClient = (doc) => ({
   updatedAt: doc.updatedAt,
 });
 
+// ====== SEED DEFAULT CATEGORIES (only if empty) ======
+const existingCats = await Category.countDocuments();
+if (existingCats === 0) {
+  console.log("🌱 seeding default categories...");
+  await Category.insertMany([
+    { slug: "hoodie", name: "Hoodie", sizes: ["M", "L", "XL", "2XL"] },
+    { slug: "pants", name: "Pants", sizes: ["M", "L", "XL", "2XL"] },
+    { slug: "jeans", name: "Jeans", sizes: ["30", "32", "34", "36", "38"] },
+  ]);
+}
+
 // ====== ROUTES ======
 
 // health
 app.get("/api", (req, res) => {
-  res.json({ ok: true, message: "Orders API (Mongo) is running" });
+  res.json({ ok: true, message: "Orders API is running" });
+});
+
+// ---------- CATEGORIES (DB) ----------
+
+// get all
+app.get("/api/categories", async (req, res) => {
+  const cats = await Category.find().sort({ createdAt: 1 });
+  res.json(cats.map(catToClient));
+});
+
+// create
+app.post("/api/categories", async (req, res) => {
+  const { name, sizes } = req.body;
+  if (!name) return res.status(400).json({ error: "name required" });
+  const slug = name.toLowerCase().replace(/\s+/g, "-");
+  // avoid duplicates
+  const exists = await Category.findOne({ slug });
+  if (exists) {
+    return res.status(400).json({ error: "category exists" });
+  }
+  const cat = await Category.create({
+    slug,
+    name,
+    sizes: Array.isArray(sizes) ? sizes : [],
+  });
+  res.json({ ok: true, category: catToClient(cat) });
+});
+
+// delete category → delete stocks → delete orders
+app.delete("/api/categories/:slug", async (req, res) => {
+  try {
+    const { slug } = req.params;
+
+    // delete category
+    await Category.deleteOne({ slug });
+
+    // find all stocks with this category
+    const stocks = await Stock.find({ category: slug });
+    const stockIds = stocks.map((s) => s._id);
+
+    // delete orders of these stocks
+    await Order.deleteMany({ itemId: { $in: stockIds } });
+
+    // delete the stocks
+    await Stock.deleteMany({ category: slug });
+
+    res.json({
+      ok: true,
+      message: `category ${slug} deleted with its stocks and orders`,
+    });
+  } catch (err) {
+    console.error("delete category error", err);
+    res.status(500).json({ error: "server error" });
+  }
 });
 
 // ---------- STOCKS ----------
-
-// get all
 app.get("/api/stocks", async (req, res) => {
   const stocks = await Stock.find().sort({ createdAt: -1 });
   res.json(stocks.map(stockToClient));
 });
 
-// create
 app.post("/api/stocks", async (req, res) => {
   const { category, name, sizes } = req.body;
   if (!category || !name) {
@@ -118,7 +198,6 @@ app.post("/api/stocks", async (req, res) => {
   res.json({ ok: true, stock: stockToClient(stock) });
 });
 
-// update stock
 app.put("/api/stocks/:id", async (req, res) => {
   const { id } = req.params;
   const { category, name, sizes } = req.body;
@@ -129,14 +208,13 @@ app.put("/api/stocks/:id", async (req, res) => {
   if (name !== undefined) stock.name = name;
   if (sizes !== undefined) {
     stock.sizes = sizes;
-    stock.markModified("sizes"); // 👈 needed
+    stock.markModified("sizes");
   }
 
   await stock.save();
   res.json({ ok: true, stock: stockToClient(stock) });
 });
 
-// delete stock
 app.delete("/api/stocks/:id", async (req, res) => {
   const { id } = req.params;
   const stock = await Stock.findById(id);
@@ -145,43 +223,12 @@ app.delete("/api/stocks/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
-// ---------- DELETE CATEGORY (NEW) ----------
-// deletes:
-// 1) all stocks with that category
-// 2) all orders linked to those stocks
-app.delete("/api/categories/:category", async (req, res) => {
-  try {
-    const { category } = req.params;
-
-    // find all stocks for that category
-    const stocks = await Stock.find({ category });
-    const stockIds = stocks.map((s) => s._id);
-
-    // delete orders that used those stocks
-    await Order.deleteMany({ itemId: { $in: stockIds } });
-
-    // delete the stocks
-    await Stock.deleteMany({ category });
-
-    res.json({
-      ok: true,
-      message: `Category "${category}" and its stocks/orders deleted.`,
-    });
-  } catch (err) {
-    console.error("delete category error", err);
-    res.status(500).json({ error: "server error" });
-  }
-});
-
 // ---------- ORDERS ----------
-
-// get all
 app.get("/api/orders", async (req, res) => {
   const orders = await Order.find().sort({ createdAt: -1 });
   res.json(orders.map(orderToClient));
 });
 
-// create order → decrease stock
 app.post("/api/orders", async (req, res) => {
   try {
     const {
@@ -214,7 +261,6 @@ app.post("/api/orders", async (req, res) => {
         .json({ error: "not enough stock", available: current });
     }
 
-    // decrease
     stock.sizes[size] = current - want;
     stock.markModified("sizes");
     await stock.save();
@@ -235,7 +281,6 @@ app.post("/api/orders", async (req, res) => {
     });
 
     const freshStocks = await Stock.find().sort({ createdAt: -1 });
-
     res.json({
       ok: true,
       order: orderToClient(order),
@@ -247,7 +292,6 @@ app.post("/api/orders", async (req, res) => {
   }
 });
 
-// edit order → adjust stock
 app.put("/api/orders/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -264,7 +308,6 @@ app.put("/api/orders/:id", async (req, res) => {
     const newItemId = body.itemId || oldItemId;
     const newSize = body.size || oldSize;
 
-    // case 1: same item + same size
     if (newItemId === oldItemId && newSize === oldSize) {
       const stock = await Stock.findById(newItemId);
       if (!stock) return res.status(400).json({ error: "stock item missing" });
@@ -273,7 +316,6 @@ app.put("/api/orders/:id", async (req, res) => {
       const diff = newQty - oldQty;
 
       if (diff > 0) {
-        // need more stock
         if (current < diff) {
           return res
             .status(400)
@@ -281,14 +323,12 @@ app.put("/api/orders/:id", async (req, res) => {
         }
         stock.sizes[newSize] = current - diff;
       } else if (diff < 0) {
-        // return
         stock.sizes[newSize] = current + Math.abs(diff);
       }
       stock.markModified("sizes");
       await stock.save();
     } else {
-      // case 2: item or size changed
-      // 2a) return old qty to old stock
+      // return to old stock
       const oldStock = await Stock.findById(oldItemId);
       if (oldStock) {
         const oldCount = Number(oldStock.sizes[oldSize] || 0);
@@ -296,7 +336,7 @@ app.put("/api/orders/:id", async (req, res) => {
         oldStock.markModified("sizes");
         await oldStock.save();
       }
-      // 2b) take from new stock
+      // take from new stock
       const newStock = await Stock.findById(newItemId);
       if (!newStock)
         return res.status(400).json({ error: "new stock item missing" });
@@ -312,7 +352,6 @@ app.put("/api/orders/:id", async (req, res) => {
       await newStock.save();
     }
 
-    // update order fields
     order.customerName = body.customerName ?? order.customerName;
     order.phone = body.phone ?? order.phone;
     order.address = body.address ?? order.address;
@@ -329,7 +368,6 @@ app.put("/api/orders/:id", async (req, res) => {
     await order.save();
 
     const freshStocks = await Stock.find().sort({ createdAt: -1 });
-
     res.json({
       ok: true,
       order: orderToClient(order),
@@ -341,7 +379,6 @@ app.put("/api/orders/:id", async (req, res) => {
   }
 });
 
-// delete order → return qty
 app.delete("/api/orders/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -359,7 +396,6 @@ app.delete("/api/orders/:id", async (req, res) => {
     await Order.deleteOne({ _id: id });
 
     const freshStocks = await Stock.find().sort({ createdAt: -1 });
-
     res.json({ ok: true, stocks: freshStocks.map(stockToClient) });
   } catch (err) {
     console.error("delete order error", err);
@@ -367,7 +403,7 @@ app.delete("/api/orders/:id", async (req, res) => {
   }
 });
 
-// fallback → send index.html
+// fallback
 app.get("*", (req, res) => {
   res.sendFile(path.join(publicPath, "index.html"));
 });
