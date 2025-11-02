@@ -127,21 +127,35 @@
       margin-right: .25rem;
       cursor: pointer;
     }
+    .status-pill {
+      display: inline-block;
+      padding: .15rem .5rem .25rem;
+      border-radius: 999px;
+      font-size: .6rem;
+      font-weight: 500;
+    }
+    .status-pending { background: rgba(234,179,8,0.12); color: #fde68a; border: 1px solid rgba(234,179,8,0.3); }
+    .status-on { background: rgba(59,130,246,0.08); color: #bfdbfe; border: 1px solid rgba(59,130,246,0.3); }
+    .status-delivered { background: rgba(34,197,94,0.12); color: #bbf7d0; border: 1px solid rgba(34,197,94,0.3); }
+
+    /* edit sidebar */
     .edit-panel {
       position: fixed;
       top: 0;
       right: 0;
-      width: 280px;
+      width: 300px;
       height: 100vh;
-      background: rgba(15,23,42,0.97);
+      background: rgba(15,23,42,0.98);
       border-left: 1px solid rgba(148,163,184,.15);
-      padding: .9rem;
+      padding: .9rem .9rem 1.1rem;
       display: none;
       flex-direction: column;
       gap: .5rem;
       z-index: 99;
+      overflow-y: auto;
     }
     .edit-panel.show { display: flex; }
+
     .add-cat-box {
       background: rgba(15,23,42,0.3);
       border: 1px solid rgba(148,163,184,0.15);
@@ -171,21 +185,50 @@
     </div>
   </header>
 
-  <!-- edit order panel -->
+  <!-- EDIT ORDER PANEL -->
   <div id="editPanel" class="edit-panel">
     <h3>Edit order</h3>
+
+    <label>Customer name</label>
+    <input type="text" id="editCustomer" />
+
+    <label>Phone</label>
+    <input type="text" id="editPhone" />
+
+    <label>Address</label>
+    <input type="text" id="editAddress" />
+
+    <label>Payment</label>
+    <select id="editPayment">
+      <option value="cash">Cash</option>
+      <option value="bank">Bank transfer</option>
+    </select>
+
+    <label>Category</label>
+    <select id="editCategory"></select>
+
+    <label>Item</label>
+    <select id="editItem"></select>
+
+    <label>Size</label>
+    <select id="editSize"></select>
+
+    <label>Quantity</label>
+    <input type="number" id="editQty" min="1" value="1" />
+
     <label>Price</label>
     <input type="number" id="editPrice" min="0" value="0" />
+
     <label>Status</label>
     <select id="editStatus">
       <option value="pending">Pending</option>
+      <option value="on-delivery">On delivery</option>
       <option value="delivered">Delivered</option>
-      <option value="canceled">Canceled</option>
     </select>
-    <label>Quantity</label>
-    <input type="number" id="editQty" min="1" value="1" />
+
     <label>Notes</label>
     <input type="text" id="editNotes" />
+
     <div style="display:flex;gap:.5rem;margin-top:.5rem;">
       <button id="saveEditBtn">Save</button>
       <button id="closeEditBtn" class="secondary" type="button">Close</button>
@@ -226,8 +269,8 @@
           <label for="status">Status</label>
           <select id="status">
             <option value="pending">Pending</option>
+            <option value="on-delivery">On delivery</option>
             <option value="delivered">Delivered</option>
-            <option value="canceled">Canceled</option>
           </select>
         </div>
       </div>
@@ -300,7 +343,7 @@
       <div class="add-cat-box">
         <small>Add new category</small>
         <div class="two-col" style="gap:.35rem;">
-          <input id="newCategoryName" type="text"  />
+          <input id="newCategoryName" type="text" placeholder="e.g. T-Shirts" />
           <button id="addCategoryBtn">Add</button>
         </div>
       </div>
@@ -325,7 +368,7 @@
   </div>
 
   <script>
-    // base categories (front)
+    // base categories
     let categories = [
       { id: "hoodie", name: "Hoodie", sizes: ["M","L","XL","2XL"] },
       { id: "pants", name: "Pants", sizes: ["M","L","XL","2XL"] },
@@ -362,15 +405,23 @@
     const totalDeliveredEl = document.getElementById("totalDelivered");
     const totalPendingEl = document.getElementById("totalPending");
 
+    // edit elements
     const editPanel = document.getElementById("editPanel");
+    const editCustomer = document.getElementById("editCustomer");
+    const editPhone = document.getElementById("editPhone");
+    const editAddress = document.getElementById("editAddress");
+    const editPayment = document.getElementById("editPayment");
+    const editCategory = document.getElementById("editCategory");
+    const editItem = document.getElementById("editItem");
+    const editSize = document.getElementById("editSize");
+    const editQty = document.getElementById("editQty");
     const editPrice = document.getElementById("editPrice");
     const editStatus = document.getElementById("editStatus");
-    const editQty = document.getElementById("editQty");
     const editNotes = document.getElementById("editNotes");
     const saveEditBtn = document.getElementById("saveEditBtn");
     const closeEditBtn = document.getElementById("closeEditBtn");
 
-    // --------- helpers ----------
+    // ---- helpers ----
     function renderCategorySelects() {
       // orders
       productCategoryEl.innerHTML = "";
@@ -380,7 +431,6 @@
         opt.textContent = cat.name;
         productCategoryEl.appendChild(opt);
       });
-
       // stocks
       newCategoryEl.innerHTML = "";
       categories.forEach(cat => {
@@ -388,6 +438,14 @@
         opt.value = cat.id;
         opt.textContent = cat.name;
         newCategoryEl.appendChild(opt);
+      });
+      // edit order
+      editCategory.innerHTML = "";
+      categories.forEach(cat => {
+        const opt = document.createElement("option");
+        opt.value = cat.id;
+        opt.textContent = cat.name;
+        editCategory.appendChild(opt);
       });
     }
 
@@ -409,12 +467,12 @@
     function renderStockList() {
       stockList.innerHTML = "";
       stockItems.forEach(item => {
-        const div = document.createElement("div");
-        div.className = "stock-item";
         const cat = categories.find(c => c.id === item.category);
         const sizesHtml = Object.entries(item.sizes || {})
           .map(([s,q]) => `<div class="size-row"><span>${s}</span><span class="badge">${q}</span></div>`)
           .join("");
+        const div = document.createElement("div");
+        div.className = "stock-item";
         div.innerHTML = `
           <div style="margin-bottom:.35rem;display:flex;justify-content:space-between;gap:.5rem;align-items:center;">
             <div>
@@ -429,34 +487,6 @@
           ${sizesHtml}
         `;
         stockList.appendChild(div);
-
-        // EDIT STOCK
-        div.querySelector("[data-stock-edit]").onclick = () => {
-          const id = item.id;
-          const stk = stockItems.find(s => s.id === id);
-          if (!stk) return;
-          newCategoryEl.value = stk.category;
-          stockNameEl.value = stk.name;
-          // render sizes for this category then fill
-          renderStockSizesAreaFor(stk.category);
-          stockSizesArea.querySelectorAll("input[data-size]").forEach(inp => {
-            const sz = inp.dataset.size;
-            inp.value = stk.sizes && typeof stk.sizes[sz] !== "undefined" ? stk.sizes[sz] : 0;
-          });
-          // remember editing id
-          stockNameEl.dataset.editingId = id;
-        };
-
-        // DELETE STOCK
-        div.querySelector("[data-stock-del]").onclick = async () => {
-          if (!confirm("Delete this stock item?")) return;
-          try {
-            await fetch(`/api/stocks/${item.id}`, { method: "DELETE" });
-          } catch(e) {}
-          stockItems = stockItems.filter(s => s.id !== item.id);
-          renderStockList();
-          fillOrderStockItems(productCategoryEl.value);
-        };
       });
     }
 
@@ -491,6 +521,12 @@
       });
     }
 
+    function getStatusPill(status) {
+      if (status === "delivered") return '<span class="status-pill status-delivered">Delivered</span>';
+      if (status === "on-delivery") return '<span class="status-pill status-on">On delivery</span>';
+      return '<span class="status-pill status-pending">Pending</span>';
+    }
+
     function updateTotals() {
       let total = 0;
       let delivered = 0;
@@ -520,7 +556,7 @@
           <td>${o.size}</td>
           <td>${o.qty}</td>
           <td>${o.price || 0}</td>
-          <td>${o.status || "pending"}</td>
+          <td>${getStatusPill(o.status)}</td>
           <td>${o.address || ""}</td>
           <td>
             <button class="actions-btn" data-edit="${o.id}">Edit</button>
@@ -530,34 +566,66 @@
         ordersTableBody.appendChild(tr);
       });
 
-      // delete order
+      // delete
       document.querySelectorAll("[data-del]").forEach(btn => {
         btn.onclick = async () => {
           const id = btn.dataset.del;
           if (!confirm("Delete order?")) return;
-          try {
-            await fetch(`/api/orders/${id}`, { method: "DELETE" });
-          } catch(e) {}
+          await fetch(`/api/orders/${id}`, { method: "DELETE" }).catch(() => {});
           orders = orders.filter(o => String(o.id) !== String(id));
           renderOrders();
           updateTotals();
-          loadStocks(); // to refresh returned stock
+          await loadStocks();
         };
       });
 
-      // edit order
+      // edit
       document.querySelectorAll("[data-edit]").forEach(btn => {
         btn.onclick = () => {
           const id = btn.dataset.edit;
           const ord = orders.find(o => String(o.id) === String(id));
           if (!ord) return;
           editingOrderId = id;
+          // fill panel
+          editCustomer.value = ord.customerName || "";
+          editPhone.value = ord.phone || "";
+          editAddress.value = ord.address || "";
+          editPayment.value = ord.payment || "cash";
+          editCategory.value = ord.category || "";
+          // fill item/select
+          fillEditItems(ord.category, ord.itemId);
+          fillEditSizes(ord.itemId, ord.size);
+          editQty.value = ord.qty || 1;
           editPrice.value = ord.price || 0;
           editStatus.value = ord.status || "pending";
-          editQty.value = ord.qty || 1;
           editNotes.value = ord.notes || "";
           editPanel.classList.add("show");
         };
+      });
+    }
+
+    function fillEditItems(categoryId, selectedItemId) {
+      editItem.innerHTML = "";
+      const items = stockItems.filter(i => i.category === categoryId);
+      items.forEach(it => {
+        const opt = document.createElement("option");
+        opt.value = it.id;
+        opt.textContent = it.name;
+        if (String(it.id) === String(selectedItemId)) opt.selected = true;
+        editItem.appendChild(opt);
+      });
+    }
+
+    function fillEditSizes(itemId, selectedSize) {
+      editSize.innerHTML = "";
+      const item = stockItems.find(i => String(i.id) === String(itemId));
+      if (!item) return;
+      Object.entries(item.sizes || {}).forEach(([sz, qty]) => {
+        const opt = document.createElement("option");
+        opt.value = sz;
+        opt.textContent = qty <= 0 ? `${sz} (OUT)` : `${sz} (${qty})`;
+        if (sz === selectedSize) opt.selected = true;
+        editSize.appendChild(opt);
       });
     }
 
@@ -591,7 +659,7 @@
       newCategoryNameEl.value = "";
     });
 
-    // save / create / update stock
+    // create / update stock
     saveStockItemBtn.onclick = async () => {
       const category = newCategoryEl.value;
       const name = stockNameEl.value.trim();
@@ -608,7 +676,6 @@
 
       try {
         if (editingId) {
-          // UPDATE
           const res = await fetch(`/api/stocks/${editingId}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
@@ -621,7 +688,6 @@
           }
           stockNameEl.dataset.editingId = "";
         } else {
-          // CREATE
           const res = await fetch("/api/stocks", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -643,6 +709,33 @@
       stockNameEl.value = "";
       renderStockSizesAreaFor(category);
     };
+
+    // stock list edit/del
+    stockList.addEventListener("click", async (e) => {
+      const editId = e.target.dataset.stockEdit;
+      const delId = e.target.dataset.stockDel;
+
+      if (editId) {
+        const stk = stockItems.find(s => s.id === editId);
+        if (!stk) return;
+        newCategoryEl.value = stk.category;
+        stockNameEl.value = stk.name;
+        renderStockSizesAreaFor(stk.category);
+        stockSizesArea.querySelectorAll("input[data-size]").forEach(inp => {
+          const sz = inp.dataset.size;
+          inp.value = stk.sizes && typeof stk.sizes[sz] !== "undefined" ? stk.sizes[sz] : 0;
+        });
+        stockNameEl.dataset.editingId = editId;
+      }
+
+      if (delId) {
+        if (!confirm("Delete this stock item?")) return;
+        await fetch(`/api/stocks/${delId}`, { method: "DELETE" }).catch(()=>{});
+        stockItems = stockItems.filter(s => s.id !== delId);
+        renderStockList();
+        fillOrderStockItems(productCategoryEl.value);
+      }
+    });
 
     // change order category
     productCategoryEl.addEventListener("change", () => {
@@ -678,7 +771,7 @@
         return;
       }
 
-      // local check
+      // check locally
       const it = stockItems.find(i => i.id === itemId);
       const currentQty = it ? Number(it.sizes?.[size] || 0) : 0;
       if (currentQty < qty) {
@@ -701,6 +794,7 @@
         notes
       };
 
+      let createdOrder = null;
       try {
         const res = await fetch("/api/orders", {
           method: "POST",
@@ -712,12 +806,17 @@
           alert(data.error || "error");
           return;
         }
-        orders.unshift(data.order);
-        renderOrders();
-        updateTotals();
-        await loadStocks(); // refresh stock numbers
+        createdOrder = data.order;
       } catch(e) {
         console.log(e);
+      }
+
+      if (createdOrder) {
+        orders.unshift(createdOrder);
+        renderOrders();
+        updateTotals();
+        // VERY IMPORTANT: reload stocks from server so UI shows decreased qty
+        await loadStocks();
       }
 
       qtyEl.value = 1;
@@ -734,17 +833,32 @@
       a.click();
     };
 
-    // save edited order
+    // edit panel actions
+    editCategory.addEventListener("change", () => {
+      const catId = editCategory.value;
+      fillEditItems(catId);
+      const first = stockItems.find(i => i.category === catId);
+      if (first) fillEditSizes(first.id);
+    });
+
+    editItem.addEventListener("change", () => {
+      fillEditSizes(editItem.value);
+    });
+
     saveEditBtn.onclick = async () => {
       if (!editingOrderId) return;
-      const ord = orders.find(o => String(o.id) === String(editingOrderId));
-      if (!ord) return;
       const body = {
-        ...ord,
+        customerName: editCustomer.value.trim(),
+        phone: editPhone.value.trim(),
+        address: editAddress.value.trim(),
+        payment: editPayment.value,
+        category: editCategory.value,
+        itemId: editItem.value,
+        size: editSize.value,
+        qty: Number(editQty.value || 1),
         price: Number(editPrice.value || 0),
         status: editStatus.value,
-        qty: Number(editQty.value || 1),
-        notes: editNotes.value || ""
+        notes: editNotes.value.trim()
       };
       try {
         const res = await fetch(`/api/orders/${editingOrderId}`, {
@@ -758,10 +872,12 @@
           return;
         }
         const idx = orders.findIndex(o => String(o.id) === String(editingOrderId));
-        orders[idx] = data.order;
+        if (idx !== -1) {
+          orders[idx] = data.order;
+        }
         renderOrders();
         updateTotals();
-        await loadStocks();
+        await loadStocks(); // in case qty changed
         editPanel.classList.remove("show");
         editingOrderId = null;
       } catch(e) {
@@ -778,7 +894,7 @@
       try {
         const res = await fetch("/api/stocks");
         const data = await res.json();
-        stockItems = data;
+        stockItems = data.map(s => ({ ...s, id: s.id || s._id }));
         renderStockList();
         fillOrderStockItems(productCategoryEl.value);
       } catch(e) {
@@ -790,7 +906,7 @@
       try {
         const res = await fetch("/api/orders");
         const data = await res.json();
-        orders = Array.isArray(data) ? data.sort((a,b) => (b.id||0) - (a.id||0)) : [];
+        orders = Array.isArray(data) ? data : [];
         renderOrders();
         updateTotals();
       } catch(e) {
@@ -801,11 +917,12 @@
     // INIT
     renderCategorySelects();
     renderStockSizesAreaFor(categories[0].id);
-    loadStocks().then(() => {
+    (async () => {
+      await loadStocks();
       productCategoryEl.value = categories[0].id;
       fillOrderStockItems(categories[0].id);
-    });
-    loadOrders();
+      await loadOrders();
+    })();
 
     newCategoryEl.addEventListener("change", () => {
       renderStockSizesAreaFor(newCategoryEl.value);
