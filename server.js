@@ -34,7 +34,7 @@ const stockSchema = new mongoose.Schema(
   {
     category: { type: String, required: true },
     name: { type: String, required: true },
-    // example: { M: 4, L: 2 }
+    // ex: { M: 4, L: 2 }
     sizes: { type: Object, default: {} },
   },
   { timestamps: true }
@@ -98,13 +98,11 @@ app.get("/api", (req, res) => {
 
 // ---------- STOCKS ----------
 
-// GET all stocks
 app.get("/api/stocks", async (req, res) => {
   const stocks = await Stock.find().sort({ createdAt: -1 });
   res.json(stocks.map(stockToClient));
 });
 
-// CREATE stock
 app.post("/api/stocks", async (req, res) => {
   const { category, name, sizes } = req.body;
   if (!category || !name) {
@@ -118,7 +116,6 @@ app.post("/api/stocks", async (req, res) => {
   res.json({ ok: true, stock: stockToClient(stock) });
 });
 
-// UPDATE stock
 app.put("/api/stocks/:id", async (req, res) => {
   const { id } = req.params;
   const { category, name, sizes } = req.body;
@@ -127,13 +124,15 @@ app.put("/api/stocks/:id", async (req, res) => {
 
   if (category !== undefined) stock.category = category;
   if (name !== undefined) stock.name = name;
-  if (sizes !== undefined) stock.sizes = sizes;
+  if (sizes !== undefined) {
+    stock.sizes = sizes;
+    stock.markModified("sizes"); // 👈 important
+  }
 
   await stock.save();
   res.json({ ok: true, stock: stockToClient(stock) });
 });
 
-// DELETE stock
 app.delete("/api/stocks/:id", async (req, res) => {
   const { id } = req.params;
   const stock = await Stock.findById(id);
@@ -144,13 +143,13 @@ app.delete("/api/stocks/:id", async (req, res) => {
 
 // ---------- ORDERS ----------
 
-// GET all
+// get all
 app.get("/api/orders", async (req, res) => {
   const orders = await Order.find().sort({ createdAt: -1 });
   res.json(orders.map(orderToClient));
 });
 
-// CREATE order → decrease stock
+// create → decrease stock
 app.post("/api/orders", async (req, res) => {
   try {
     const {
@@ -178,14 +177,15 @@ app.post("/api/orders", async (req, res) => {
     const want = Number(qty || 1);
     const current = Number((stock.sizes && stock.sizes[size]) || 0);
 
-    // IMPORTANT: this is where we decrease
     if (current < want) {
       return res
         .status(400)
         .json({ error: "not enough stock", available: current });
     }
 
+    // decrease
     stock.sizes[size] = current - want;
+    stock.markModified("sizes"); // 👈 THIS is the fix
     await stock.save();
 
     const order = await Order.create({
@@ -203,7 +203,6 @@ app.post("/api/orders", async (req, res) => {
       status: status || "pending",
     });
 
-    // also return fresh stocks so frontend can refresh
     const freshStocks = await Stock.find().sort({ createdAt: -1 });
 
     res.json({
@@ -217,7 +216,7 @@ app.post("/api/orders", async (req, res) => {
   }
 });
 
-// EDIT order → fix stock
+// update → adjust stock
 app.put("/api/orders/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -234,16 +233,14 @@ app.put("/api/orders/:id", async (req, res) => {
     const newItemId = body.itemId || oldItemId;
     const newSize = body.size || oldSize;
 
-    // if item and size are the same → just adjust number
+    // same item & size
     if (newItemId === oldItemId && newSize === oldSize) {
       const stock = await Stock.findById(newItemId);
       if (!stock) return res.status(400).json({ error: "stock item missing" });
-
       const current = Number(stock.sizes[newSize] || 0);
       const diff = newQty - oldQty;
 
       if (diff > 0) {
-        // need more
         if (current < diff) {
           return res
             .status(400)
@@ -251,21 +248,21 @@ app.put("/api/orders/:id", async (req, res) => {
         }
         stock.sizes[newSize] = current - diff;
       } else if (diff < 0) {
-        // return back
         stock.sizes[newSize] = current + Math.abs(diff);
       }
-
+      stock.markModified("sizes"); // 👈
       await stock.save();
     } else {
       // item or size changed
-      // 1) return to old stock
+      // return to old stock
       const oldStock = await Stock.findById(oldItemId);
       if (oldStock) {
         const oldCount = Number(oldStock.sizes[oldSize] || 0);
         oldStock.sizes[oldSize] = oldCount + oldQty;
+        oldStock.markModified("sizes"); // 👈
         await oldStock.save();
       }
-      // 2) take from new stock
+      // take from new stock
       const newStock = await Stock.findById(newItemId);
       if (!newStock)
         return res.status(400).json({ error: "new stock item missing" });
@@ -277,10 +274,11 @@ app.put("/api/orders/:id", async (req, res) => {
           .json({ error: "not enough stock for new item", available: newCount });
       }
       newStock.sizes[newSize] = newCount - newQty;
+      newStock.markModified("sizes"); // 👈
       await newStock.save();
     }
 
-    // save order
+    // update order fields
     order.customerName = body.customerName ?? order.customerName;
     order.phone = body.phone ?? order.phone;
     order.address = body.address ?? order.address;
@@ -309,7 +307,7 @@ app.put("/api/orders/:id", async (req, res) => {
   }
 });
 
-// DELETE order → return qty to stock
+// delete → return qty
 app.delete("/api/orders/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -320,6 +318,7 @@ app.delete("/api/orders/:id", async (req, res) => {
     if (stock) {
       const current = Number(stock.sizes[order.size] || 0);
       stock.sizes[order.size] = current + order.qty;
+      stock.markModified("sizes"); // 👈
       await stock.save();
     }
 
@@ -334,7 +333,7 @@ app.delete("/api/orders/:id", async (req, res) => {
   }
 });
 
-// fallback → send frontend
+// fallback
 app.get("*", (req, res) => {
   res.sendFile(path.join(publicPath, "index.html"));
 });
