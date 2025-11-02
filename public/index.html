@@ -138,7 +138,6 @@
     .status-on { background: rgba(59,130,246,0.08); color: #bfdbfe; border: 1px solid rgba(59,130,246,0.3); }
     .status-delivered { background: rgba(34,197,94,0.12); color: #bbf7d0; border: 1px solid rgba(34,197,94,0.3); }
 
-    /* edit sidebar */
     .edit-panel {
       position: fixed;
       top: 0;
@@ -163,12 +162,21 @@
       padding: .45rem .5rem .55rem;
       margin-bottom: .5rem;
     }
-    .add-cat-box small {
-      display: block;
-      font-size: .6rem;
-      color: #94a3b8;
-      margin-bottom: .25rem;
+    .cat-list-small {
+      background: rgba(15,23,42,0.3);
+      border: 1px solid rgba(148,163,184,0.15);
+      border-radius: .6rem;
+      padding: .45rem .5rem .55rem;
+      margin-top:.5rem;
     }
+    .cat-row {
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      margin-bottom:.35rem;
+      font-size:.7rem;
+    }
+
     @media (max-width: 900px) {
       .layout { grid-template-columns: 1fr; height: auto; }
       .card { height: auto; }
@@ -188,47 +196,35 @@
   <!-- EDIT ORDER PANEL -->
   <div id="editPanel" class="edit-panel">
     <h3>Edit order</h3>
-
     <label>Customer name</label>
     <input type="text" id="editCustomer" />
-
     <label>Phone</label>
     <input type="text" id="editPhone" />
-
     <label>Address</label>
     <input type="text" id="editAddress" />
-
     <label>Payment</label>
     <select id="editPayment">
       <option value="cash">Cash</option>
       <option value="bank">Bank transfer</option>
     </select>
-
     <label>Category</label>
     <select id="editCategory"></select>
-
     <label>Item</label>
     <select id="editItem"></select>
-
     <label>Size</label>
     <select id="editSize"></select>
-
     <label>Quantity</label>
     <input type="number" id="editQty" min="1" value="1" />
-
     <label>Price</label>
     <input type="number" id="editPrice" min="0" value="0" />
-
     <label>Status</label>
     <select id="editStatus">
       <option value="pending">Pending</option>
       <option value="on-delivery">On delivery</option>
       <option value="delivered">Delivered</option>
     </select>
-
     <label>Notes</label>
     <input type="text" id="editNotes" />
-
     <div style="display:flex;gap:.5rem;margin-top:.5rem;">
       <button id="saveEditBtn">Save</button>
       <button id="closeEditBtn" class="secondary" type="button">Close</button>
@@ -274,9 +270,7 @@
           </select>
         </div>
       </div>
-
       <hr style="border:0;border-top:1px solid rgba(148,163,184,0.12);margin:.7rem 0;" />
-
       <div class="form-group">
         <label for="productCategory">Product category</label>
         <select id="productCategory"></select>
@@ -343,12 +337,17 @@
       <div class="add-cat-box">
         <small>Add new category</small>
         <div class="two-col" style="gap:.35rem;">
-          <input id="newCategoryName" type="text" placeholder="e.g. T-Shirts" />
+          <input id="newCategoryName" type="text"  />
           <button id="addCategoryBtn">Add</button>
         </div>
       </div>
 
-      <div class="form-group">
+      <div class="cat-list-small">
+        <small style="display:block;margin-bottom:.35rem;">Current categories</small>
+        <div id="categoriesList"></div>
+      </div>
+
+      <div class="form-group" style="margin-top:.5rem;">
         <label for="newCategory">Category</label>
         <select id="newCategory"></select>
       </div>
@@ -368,11 +367,11 @@
   </div>
 
   <script>
-    // base categories
+    // default / built-in categories (front only)
     let categories = [
-      { id: "hoodie", name: "Hoodie", sizes: ["M","L","XL","2XL"] },
-      { id: "pants", name: "Pants", sizes: ["M","L","XL","2XL"] },
-      { id: "jeans", name: "Jeans", sizes: ["30","32","34","36","38"] }
+      { id: "hoodie", name: "Hoodie", sizes: ["M", "L", "XL", "2XL"] },
+      { id: "pants", name: "Pants", sizes: ["M", "L", "XL", "2XL"] },
+      { id: "jeans", name: "Jeans", sizes: ["30", "32", "34", "36", "38"] }
     ];
 
     let stockItems = [];
@@ -395,6 +394,7 @@
     const newCategoryEl = document.getElementById("newCategory");
     const newCategoryNameEl = document.getElementById("newCategoryName");
     const addCategoryBtn = document.getElementById("addCategoryBtn");
+    const categoriesListEl = document.getElementById("categoriesList");
 
     const stockNameEl = document.getElementById("stockName");
     const stockSizesArea = document.getElementById("stockSizesArea");
@@ -421,9 +421,9 @@
     const saveEditBtn = document.getElementById("saveEditBtn");
     const closeEditBtn = document.getElementById("closeEditBtn");
 
-    // ---- helpers ----
+    // helpers
     function renderCategorySelects() {
-      // orders
+      // orders form
       productCategoryEl.innerHTML = "";
       categories.forEach(cat => {
         const opt = document.createElement("option");
@@ -431,7 +431,7 @@
         opt.textContent = cat.name;
         productCategoryEl.appendChild(opt);
       });
-      // stocks
+      // stock form
       newCategoryEl.innerHTML = "";
       categories.forEach(cat => {
         const opt = document.createElement("option");
@@ -439,13 +439,24 @@
         opt.textContent = cat.name;
         newCategoryEl.appendChild(opt);
       });
-      // edit order
+      // edit order form
       editCategory.innerHTML = "";
       categories.forEach(cat => {
         const opt = document.createElement("option");
         opt.value = cat.id;
         opt.textContent = cat.name;
         editCategory.appendChild(opt);
+      });
+      // category list (with delete)
+      categoriesListEl.innerHTML = "";
+      categories.forEach(cat => {
+        const row = document.createElement("div");
+        row.className = "cat-row";
+        row.innerHTML = `
+          <span>${cat.name}</span>
+          <button class="actions-btn" data-del-cat="${cat.id}">Del</button>
+        `;
+        categoriesListEl.appendChild(row);
       });
     }
 
@@ -566,7 +577,7 @@
         ordersTableBody.appendChild(tr);
       });
 
-      // delete
+      // delete order
       document.querySelectorAll("[data-del]").forEach(btn => {
         btn.onclick = async () => {
           const id = btn.dataset.del;
@@ -579,20 +590,18 @@
         };
       });
 
-      // edit
+      // edit order
       document.querySelectorAll("[data-edit]").forEach(btn => {
         btn.onclick = () => {
           const id = btn.dataset.edit;
           const ord = orders.find(o => String(o.id) === String(id));
           if (!ord) return;
           editingOrderId = id;
-          // fill panel
           editCustomer.value = ord.customerName || "";
           editPhone.value = ord.phone || "";
           editAddress.value = ord.address || "";
           editPayment.value = ord.payment || "cash";
           editCategory.value = ord.category || "";
-          // fill item/select
           fillEditItems(ord.category, ord.itemId);
           fillEditSizes(ord.itemId, ord.size);
           editQty.value = ord.qty || 1;
@@ -629,7 +638,7 @@
       });
     }
 
-    // ---- tabs ----
+    // tabs
     tabBtns.forEach(btn => {
       btn.addEventListener("click", () => {
         tabBtns.forEach(b => b.classList.remove("active"));
@@ -644,7 +653,7 @@
       });
     });
 
-    // add category (front only)
+    // add category (front) — also calls backend delete when removing
     addCategoryBtn.addEventListener("click", () => {
       const name = newCategoryNameEl.value.trim();
       if (!name) return;
@@ -659,12 +668,41 @@
       newCategoryNameEl.value = "";
     });
 
-    // create / update stock
+    // delete category (frontend + backend)
+    categoriesListEl.addEventListener("click", async (e) => {
+      const catId = e.target.dataset.delCat;
+      if (!catId) return;
+      const cat = categories.find(c => c.id === catId);
+      if (!cat) return;
+      if (!confirm(`Delete category "${cat.name}" and all its stock & orders?`)) return;
+
+      // call backend to delete all stocks + orders of that category
+      await fetch(`/api/categories/${encodeURIComponent(catId)}`, {
+        method: "DELETE"
+      }).catch(() => {});
+
+      // remove from local list
+      categories = categories.filter(c => c.id !== catId);
+
+      // also remove any stock of this category from local cache
+      stockItems = stockItems.filter(s => s.category !== catId);
+
+      renderCategorySelects();
+      renderStockList();
+      fillOrderStockItems(productCategoryEl.value);
+    });
+
+    // stock category change (sizes)
+    newCategoryEl.addEventListener("change", () => {
+      renderStockSizesAreaFor(newCategoryEl.value);
+    });
+
+    // save stock (create or edit)
     saveStockItemBtn.onclick = async () => {
       const category = newCategoryEl.value;
       const name = stockNameEl.value.trim();
       if (!name) {
-        alert("name?");
+        alert("write stock name");
         return;
       }
       const sizes = {};
@@ -698,8 +736,8 @@
             stockItems.push(data.stock);
           }
         }
-      } catch(e) {
-        console.log(e);
+      } catch (err) {
+        console.log(err);
       }
 
       renderStockList();
@@ -710,7 +748,7 @@
       renderStockSizesAreaFor(category);
     };
 
-    // stock list edit/del
+    // list edit / delete
     stockList.addEventListener("click", async (e) => {
       const editId = e.target.dataset.stockEdit;
       const delId = e.target.dataset.stockDel;
@@ -771,7 +809,6 @@
         return;
       }
 
-      // check locally
       const it = stockItems.find(i => i.id === itemId);
       const currentQty = it ? Number(it.sizes?.[size] || 0) : 0;
       if (currentQty < qty) {
@@ -815,7 +852,6 @@
         orders.unshift(createdOrder);
         renderOrders();
         updateTotals();
-        // VERY IMPORTANT: reload stocks from server so UI shows decreased qty
         await loadStocks();
       }
 
@@ -825,6 +861,7 @@
       document.getElementById("status").value = "pending";
     };
 
+    // export
     exportBtn.onclick = () => {
       const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(orders, null, 2));
       const a = document.createElement("a");
@@ -833,7 +870,7 @@
       a.click();
     };
 
-    // edit panel actions
+    // edit panel events
     editCategory.addEventListener("change", () => {
       const catId = editCategory.value;
       fillEditItems(catId);
@@ -877,7 +914,7 @@
         }
         renderOrders();
         updateTotals();
-        await loadStocks(); // in case qty changed
+        await loadStocks();
         editPanel.classList.remove("show");
         editingOrderId = null;
       } catch(e) {
@@ -923,10 +960,6 @@
       fillOrderStockItems(categories[0].id);
       await loadOrders();
     })();
-
-    newCategoryEl.addEventListener("change", () => {
-      renderStockSizesAreaFor(newCategoryEl.value);
-    });
   </script>
 </body>
 </html>
