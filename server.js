@@ -1,23 +1,27 @@
-// server.js - Mongo version
-const express = require("express");
-const cors = require("cors");
-const path = require("path");
-const mongoose = require("mongoose");
+// server.js (ESM + Mongo + static frontend)
+import express from "express";
+import cors from "cors";
+import path from "path";
+import mongoose from "mongoose";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// serve frontend
+// serve /public
 const publicPath = path.join(__dirname, "public");
 app.use(express.static(publicPath));
 
-// ====== MONGO CONNECT ======
+// ====== MONGO ======
 const MONGODB_URI =
   process.env.MONGODB_URI ||
   "mongodb://127.0.0.1:27017/ordersdb";
 
-mongoose
+await mongoose
   .connect(MONGODB_URI)
   .then(() => console.log("✅ Mongo connected"))
   .catch((err) => {
@@ -28,10 +32,8 @@ mongoose
 // ====== SCHEMAS ======
 const stockSchema = new mongoose.Schema(
   {
-    // hoodie / pants / jeans / tshirt ...
     category: { type: String, required: true },
     name: { type: String, required: true },
-    // sizes example: { M: 3, L: 5, XL: 0 }
     sizes: { type: Object, default: {} },
   },
   { timestamps: true }
@@ -50,7 +52,7 @@ const orderSchema = new mongoose.Schema(
     qty: { type: Number, default: 1 },
     notes: { type: String, default: "" },
     price: { type: Number, default: 0 },
-    status: { type: String, default: "pending" }, // pending / delivered / canceled
+    status: { type: String, default: "pending" },
   },
   { timestamps: true }
 );
@@ -58,72 +60,61 @@ const orderSchema = new mongoose.Schema(
 const Stock = mongoose.model("Stock", stockSchema);
 const Order = mongoose.model("Order", orderSchema);
 
-// ====== HELPERS ======
-function stockDocToClient(doc) {
-  return {
-    id: doc._id.toString(),
-    category: doc.category,
-    name: doc.name,
-    sizes: doc.sizes || {},
-    createdAt: doc.createdAt,
-    updatedAt: doc.updatedAt,
-  };
-}
+// helpers to map _id → id
+const stockToClient = (doc) => ({
+  id: doc._id.toString(),
+  category: doc.category,
+  name: doc.name,
+  sizes: doc.sizes || {},
+  createdAt: doc.createdAt,
+  updatedAt: doc.updatedAt,
+});
 
-function orderDocToClient(doc) {
-  return {
-    id: doc._id.toString(),
-    customerName: doc.customerName,
-    phone: doc.phone,
-    address: doc.address,
-    payment: doc.payment,
-    category: doc.category,
-    itemId: doc.itemId ? doc.itemId.toString() : null,
-    itemName: doc.itemName,
-    size: doc.size,
-    qty: doc.qty,
-    notes: doc.notes,
-    price: doc.price,
-    status: doc.status,
-    createdAt: doc.createdAt,
-    updatedAt: doc.updatedAt,
-  };
-}
+const orderToClient = (doc) => ({
+  id: doc._id.toString(),
+  customerName: doc.customerName,
+  phone: doc.phone,
+  address: doc.address,
+  payment: doc.payment,
+  category: doc.category,
+  itemId: doc.itemId ? doc.itemId.toString() : null,
+  itemName: doc.itemName,
+  size: doc.size,
+  qty: doc.qty,
+  notes: doc.notes,
+  price: doc.price,
+  status: doc.status,
+  createdAt: doc.createdAt,
+  updatedAt: doc.updatedAt,
+});
 
 // ====== ROUTES ======
-
-// health
 app.get("/api", (req, res) => {
-  res.json({ ok: true, message: "Orders API is running (mongo)" });
+  res.json({ ok: true, message: "Orders API (Mongo) is running" });
 });
 
-// ---------- STOCKS ----------
-
-// GET /api/stocks
+// ---- STOCKS ----
 app.get("/api/stocks", async (req, res) => {
   const stocks = await Stock.find().sort({ createdAt: -1 });
-  res.json(stocks.map(stockDocToClient));
+  res.json(stocks.map(stockToClient));
 });
 
-// POST /api/stocks
 app.post("/api/stocks", async (req, res) => {
   const { category, name, sizes } = req.body;
-  if (!category || !name) {
-    return res.status(400).json({ error: "category and name are required" });
-  }
+  if (!category || !name)
+    return res.status(400).json({ error: "category and name required" });
+
   const stock = await Stock.create({
     category,
     name,
     sizes: sizes || {},
   });
-  res.json({ ok: true, stock: stockDocToClient(stock) });
+  res.json({ ok: true, stock: stockToClient(stock) });
 });
 
-// PUT /api/stocks/:id
 app.put("/api/stocks/:id", async (req, res) => {
   const { id } = req.params;
   const { category, name, sizes } = req.body;
-
   const stock = await Stock.findById(id);
   if (!stock) return res.status(404).json({ error: "stock not found" });
 
@@ -132,28 +123,23 @@ app.put("/api/stocks/:id", async (req, res) => {
   if (sizes !== undefined) stock.sizes = sizes;
 
   await stock.save();
-  res.json({ ok: true, stock: stockDocToClient(stock) });
+  res.json({ ok: true, stock: stockToClient(stock) });
 });
 
-// DELETE /api/stocks/:id
 app.delete("/api/stocks/:id", async (req, res) => {
   const { id } = req.params;
   const stock = await Stock.findById(id);
   if (!stock) return res.status(404).json({ error: "stock not found" });
-
   await Stock.deleteOne({ _id: id });
   res.json({ ok: true });
 });
 
-// ---------- ORDERS ----------
-
-// GET /api/orders
+// ---- ORDERS ----
 app.get("/api/orders", async (req, res) => {
   const orders = await Order.find().sort({ createdAt: -1 });
-  res.json(orders.map(orderDocToClient));
+  res.json(orders.map(orderToClient));
 });
 
-// POST /api/orders
 app.post("/api/orders", async (req, res) => {
   const {
     customerName,
@@ -174,18 +160,16 @@ app.post("/api/orders", async (req, res) => {
     return res.status(400).json({ error: "missing fields" });
   }
 
-  // check stock
   const stock = await Stock.findById(itemId);
   if (!stock) return res.status(400).json({ error: "stock item not found" });
 
   const want = Number(qty || 1);
   const available = Number((stock.sizes && stock.sizes[size]) || 0);
-
   if (available < want) {
     return res.status(400).json({ error: "not enough stock", available });
   }
 
-  // decrease stock
+  // decrease
   stock.sizes[size] = available - want;
   await stock.save();
 
@@ -204,10 +188,9 @@ app.post("/api/orders", async (req, res) => {
     status: status || "pending",
   });
 
-  res.json({ ok: true, order: orderDocToClient(order) });
+  res.json({ ok: true, order: orderToClient(order) });
 });
 
-// PUT /api/orders/:id
 app.put("/api/orders/:id", async (req, res) => {
   const { id } = req.params;
   const body = req.body;
@@ -218,7 +201,6 @@ app.put("/api/orders/:id", async (req, res) => {
   const oldQty = order.qty;
   const newQty = body.qty !== undefined ? Number(body.qty) : oldQty;
 
-  // adjust stock if qty changed
   if (newQty !== oldQty) {
     const stock = await Stock.findById(order.itemId);
     if (!stock) return res.status(400).json({ error: "stock item missing" });
@@ -227,7 +209,6 @@ app.put("/api/orders/:id", async (req, res) => {
     const diff = newQty - oldQty;
 
     if (diff > 0) {
-      // need more
       if (current < diff) {
         return res
           .status(400)
@@ -235,13 +216,11 @@ app.put("/api/orders/:id", async (req, res) => {
       }
       stock.sizes[order.size] = current - diff;
     } else if (diff < 0) {
-      // return back to stock
       stock.sizes[order.size] = current + Math.abs(diff);
     }
     await stock.save();
   }
 
-  // update order fields
   order.customerName = body.customerName ?? order.customerName;
   order.phone = body.phone ?? order.phone;
   order.address = body.address ?? order.address;
@@ -254,16 +233,14 @@ app.put("/api/orders/:id", async (req, res) => {
   order.status = body.status ?? order.status;
 
   await order.save();
-  res.json({ ok: true, order: orderDocToClient(order) });
+  res.json({ ok: true, order: orderToClient(order) });
 });
 
-// DELETE /api/orders/:id
 app.delete("/api/orders/:id", async (req, res) => {
   const { id } = req.params;
   const order = await Order.findById(id);
   if (!order) return res.status(404).json({ error: "order not found" });
 
-  // return stock
   const stock = await Stock.findById(order.itemId);
   if (stock) {
     const current = Number((stock.sizes && stock.sizes[order.size]) || 0);
@@ -275,12 +252,12 @@ app.delete("/api/orders/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
-// fallback: if you open root "/"
+// fallback → send frontend
 app.get("*", (req, res) => {
   res.sendFile(path.join(publicPath, "index.html"));
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log("🚀 server running on port " + PORT);
+  console.log("🚀 server running on " + PORT);
 });
